@@ -10,6 +10,7 @@ Features:
   - Transparent documentation of CPE mapping limitations.
 """
 
+import logging
 import re
 import time
 import requests
@@ -19,6 +20,8 @@ from config import get_config
 from db.database import get_cached_cves, insert_cached_cve
 from db.models import SoftwareItem, Finding
 
+
+logger = logging.getLogger("winsentinel.nvd")
 
 # Cache marker meaning "NVD was queried and no CVE affects this product version"
 NO_CVE_SENTINEL = "NONE"
@@ -222,6 +225,13 @@ class NvdClient:
         except Exception as exc:
             return False, {}, f"CVE lookup error: {exc}"
 
+        if resp.status_code == 404 and self.api_key and "invalid apikey" in resp.headers.get("message", "").lower():
+            # NVD answers 404 "Invalid apiKey" for unknown or not-yet-activated keys. Do not fail every
+            # lookup because of it: warn once, drop the key and retry in slower keyless mode.
+            logger.warning("NVD rejected the configured NVD_API_KEY (unknown or not activated). Continuing without it.")
+            self.api_key = None
+            self.delay_seconds = max(self.delay_seconds, 6.0)
+            return self._fetch_page(vendor, cpe_product, start_index)
         if resp.status_code == 403:
             return False, {}, "NVD API Access Forbidden (403). Check API Key or IP restrictions."
         if resp.status_code == 429:

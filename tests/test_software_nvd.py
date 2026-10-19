@@ -146,6 +146,20 @@ class TestSoftwareAndNvd(unittest.TestCase):
             self.assertEqual(mock_get.call_count, 1)
             self.assertIn("cache", msg2.lower())
 
+    def test_invalid_api_key_falls_back_to_keyless_mode(self):
+        """NVD returns 404 'Invalid apiKey' for unactivated keys; lookups must still work without it."""
+        from unittest.mock import MagicMock
+        bad = MagicMock(status_code=404, headers={"message": "Invalid apiKey."})
+        good = MagicMock(status_code=200, headers={})
+        good.json.return_value = self._nvd_payload()
+        client = NvdClient(api_key="not-activated", delay_seconds=0.001)
+        with patch("requests.get", side_effect=[bad, good]) as mock_get:
+            ok, cves, _ = client.query_cves("7-zip", "24.09", db_path=self.db_path)
+        self.assertTrue(ok)
+        self.assertEqual([c["cve_id"] for c in cves], ["CVE-NEW"])
+        self.assertIsNone(client.api_key)
+        self.assertNotIn("apiKey", mock_get.call_args_list[1].kwargs["headers"])
+
     def test_zero_cves_is_cached_too(self):
         """"No CVE affects this version" must also be cached so re-scans do not hammer the NVD."""
         from unittest.mock import MagicMock
