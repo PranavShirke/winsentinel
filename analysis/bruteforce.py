@@ -20,6 +20,25 @@ from config import get_config
 from db.models import Alert, Finding
 
 
+# Windows logon types (Event 4624/4625 LogonType) in plain English
+LOGON_TYPE_LABELS = {
+    "2": "Interactive (console)",
+    "3": "Network (SMB, shares)",
+    "4": "Batch (scheduled task)",
+    "5": "Service",
+    "7": "Unlock",
+    "8": "Network cleartext",
+    "9": "New credentials (RunAs)",
+    "10": "Remote desktop (RDP)",
+    "11": "Cached interactive",
+}
+
+
+def logon_type_label(raw: Any) -> str:
+    """Return a readable label for a LogonType value (or 'Unknown')."""
+    return LOGON_TYPE_LABELS.get(str(raw).strip(), "Unknown") if raw not in (None, "") else "Unknown"
+
+
 def parse_event_timestamp(ts_val: Any) -> datetime:
     """
     Parse event timestamp into a timezone-aware UTC datetime object.
@@ -95,6 +114,12 @@ def analyze_security_events(
 
     # Daily breakdown of failed logons (for dashboard charts)
     daily_failures: Dict[str, int] = defaultdict(int)
+    # Analytics for the dashboard: who is being attacked, from where, how, and when
+    failed_by_account: Dict[str, int] = defaultdict(int)
+    failed_by_ip: Dict[str, int] = defaultdict(int)
+    failed_by_type: Dict[str, int] = defaultdict(int)
+    success_by_type: Dict[str, int] = defaultdict(int)
+    hourly_failures: Dict[str, int] = defaultdict(int)
 
     # Sort events chronologically
     sorted_events = sorted(events, key=lambda e: parse_event_timestamp(e.get("time_created")))
@@ -128,6 +153,11 @@ def analyze_security_events(
         if ev_id == 4625:
             failed_logon_count += 1
             daily_failures[date_key] += 1
+            failed_by_account[user] += 1
+            if ip not in ("-", "::1", "127.0.0.1", "N/A"):
+                failed_by_ip[ip] += 1
+            failed_by_type[logon_type_label(ev.get("logon_type"))] += 1
+            hourly_failures[ts.strftime("%Y-%m-%d %H:00")] += 1
 
             # Prune and append to user sliding window
             user_window = [
@@ -194,6 +224,7 @@ def analyze_security_events(
         # -------------------------------------------------------------
         elif ev_id == 4624:
             successful_logon_count += 1
+            success_by_type[logon_type_label(ev.get("logon_type"))] += 1
             # Check for Possible Compromise: successful logon immediately after 5+ failures
             recent_failures = [
                 (t, e) for t, e in user_failures[user]
@@ -379,6 +410,11 @@ def analyze_security_events(
         "successful_logon_count": successful_logon_count,
         "privileged_logon_count": privileged_logon_count,
         "daily_failures": dict(daily_failures),
+        "top_failed_accounts": dict(sorted(failed_by_account.items(), key=lambda kv: -kv[1])[:8]),
+        "top_failed_ips": dict(sorted(failed_by_ip.items(), key=lambda kv: -kv[1])[:8]),
+        "failed_by_logon_type": dict(failed_by_type),
+        "success_by_logon_type": dict(success_by_type),
+        "hourly_failures": dict(sorted(hourly_failures.items())),
     }
 
     return alerts, findings, metrics

@@ -15,6 +15,46 @@
   {% endif %}
 </div>
 
+<section class="panel panel-flush" id="live-panel">
+  <div class="panel-title"><span>Live monitor</span><span class="hint">Polls the Security log in the background and alerts as attacks happen</span></div>
+  <div class="panel-body-pad">
+    <div class="monitor-status">
+      {% if monitor.enabled %}
+        <span>Status <strong>ON</strong></span>
+        <span>Every <strong>{{ monitor.interval_seconds }}s</strong></span>
+        <span>Last check <strong>{{ monitor.last_poll[11:19] if monitor.last_poll else 'pending' }}</strong></span>
+        <span>Alerts raised <strong>{{ monitor.alerts_raised }}</strong></span>
+        {% if monitor.last_error %}<span class="text-faint">Last error: {{ monitor.last_error }}</span>{% endif %}
+      {% else %}
+        <span>Status <strong>OFF</strong></span>
+        <span>{{ monitor.reason }}</span>
+      {% endif %}
+    </div>
+  </div>
+  {% if live_alerts %}
+    <div class="table-responsive">
+      <table class="table">
+        <thead><tr><th>Event time</th><th>Severity</th><th>Incident</th><th>Account</th><th>Source IP</th><th>Events</th><th>ATT&amp;CK</th></tr></thead>
+        <tbody>
+          {% for a in live_alerts %}
+            <tr class="{% if a.alert_type == 'Possible Compromise' %}highlight-compromise{% elif a.alert_type == 'Brute Force Attack' %}highlight-bruteforce{% endif %}">
+              <td class="mono text-dim nowrap">{{ a.timestamp[:19].replace('T', ' ') }}</td>
+              <td>{{ sev_badge(a.severity) }}</td>
+              <td class="fw-600">{{ a.alert_type }}</td>
+              <td><code>{{ a.account }}</code></td>
+              <td><code>{{ a.source_ip }}</code></td>
+              <td class="mono fw-600">{{ a.count }}</td>
+              <td>{% for t in a.frameworks.attack %}<span class="tag tag-attack" title="{{ t.name }}">{{ t.id }}</span> {% endfor %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state"><p>No live alerts yet.{% if monitor.enabled %} The monitor is watching for failed logons, new accounts and privileged-group changes.{% endif %}</p></div>
+  {% endif %}
+</section>
+
 {% if not scan %}
   <div class="panel empty-state bracketed">
     {{ icon('alerts', 'icon-lg') }}
@@ -22,6 +62,14 @@
     <p>Run a scan or pick a previous one from Scan history.</p>
   </div>
 {% else %}
+  <section class="analytics-grid" id="analytics" data-scan="{{ scan.id }}" aria-label="Security log analytics">
+    <div class="panel chart-panel"><div class="panel-title">Most targeted accounts <span class="hint">failed logons</span></div><div class="chart-container"><canvas id="topAccountsChart" role="img" aria-label="Bar chart of most targeted accounts"></canvas></div></div>
+    <div class="panel chart-panel"><div class="panel-title">How they log on <span class="hint">failed vs successful</span></div><div class="chart-container"><canvas id="logonTypeChart" role="img" aria-label="Chart of logon types"></canvas></div></div>
+    <div class="panel chart-panel"><div class="panel-title">Top source IPs <span class="hint">failed logons</span></div><div class="chart-container"><canvas id="topIpsChart" role="img" aria-label="Bar chart of top source addresses"></canvas></div></div>
+    <div class="panel chart-panel analytics-wide"><div class="panel-title">Attack timeline <span class="hint">failed logons per hour</span></div><div class="chart-container"><canvas id="hourlyChart" role="img" aria-label="Timeline of failed logons per hour"></canvas></div></div>
+    <p class="analytics-note analytics-wide" id="analytics-note" hidden>No Security-log data in this scan. Reading the Security log needs Administrator rights: start WinSentinel with run.bat and run a new scan.</p>
+  </section>
+
   <section class="panel panel-flush">
     <div class="panel-title"><span>Detected incidents</span><span class="hint">Rules: 5 failed logons in 10 minutes &middot; success after failures &middot; 4720 / 4740 / 4732</span></div>
     {% if not alerts %}

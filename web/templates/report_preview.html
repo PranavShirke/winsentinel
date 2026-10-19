@@ -12,6 +12,7 @@
   </div>
   {% if scan %}
     <div class="page-actions">
+      <a href="{{ url_for('views.verify_report') }}" class="btn btn-secondary">{{ icon('shield-check', 'icon-sm') }} Verify a report</a>
       <a href="{{ url_for('views.export_findings_csv', scan_id=scan.id) }}" class="btn btn-secondary">{{ icon('download', 'icon-sm') }} CSV</a>
       <a href="{{ url_for('views.download_report', scan_id=scan.id) }}" class="btn btn-secondary">{{ icon('download', 'icon-sm') }} HTML</a>
       <a href="{{ url_for('views.download_report_pdf', scan_id=scan.id) }}" class="btn btn-primary">{{ icon('download', 'icon-sm') }} Download PDF report</a>

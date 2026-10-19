@@ -18,6 +18,7 @@ from db.database import (
     get_scan_summary_counts,
     get_software_by_scan_id,
 )
+from risk.fixes import get_fix
 from risk.frameworks import map_frameworks
 
 # Register states that remove a finding from the "adjusted" score (decision recorded with a note)
@@ -42,6 +43,7 @@ def enrich_findings(findings: List[Dict[str, Any]], statuses: Optional[Dict[str,
         item["register_by"] = decision.get("updated_by", "")
         item["register_at"] = (decision.get("updated_at") or "")[:19].replace("T", " ")
         item["frameworks"] = map_frameworks(f["title"])
+        item["fix"] = get_fix(f["title"]) if f["status"] in ("fail", "error") else None
         enriched.append(item)
     return enriched
 

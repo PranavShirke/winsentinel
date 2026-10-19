@@ -57,6 +57,21 @@ class Config:
     # Automatic scans while the server runs (minutes; 0 = disabled, minimum 15 when enabled)
     AUTO_SCAN_INTERVAL_MINUTES = int(os.getenv("AUTO_SCAN_INTERVAL_MINUTES", "0") or 0)
 
+    # Live Security-log monitor: "auto" (on when running as Administrator), "on" or "off"
+    LIVE_MONITOR = os.getenv("LIVE_MONITOR", "auto").strip().lower()
+    LIVE_MONITOR_INTERVAL_SECONDS = max(20, int(os.getenv("LIVE_MONITOR_INTERVAL_SECONDS", "60") or 60))
+
+    # Notifications for Critical/High events (desktop toast on by default; webhook and email optional)
+    NOTIFY_MIN_SEVERITY = os.getenv("NOTIFY_MIN_SEVERITY", "High").strip().capitalize()
+    NOTIFY_DESKTOP = os.getenv("NOTIFY_DESKTOP", "1").strip() not in ("0", "false", "off", "")
+    NOTIFY_WEBHOOK_URL = os.getenv("NOTIFY_WEBHOOK_URL", "").strip() or None
+    SMTP_HOST = os.getenv("SMTP_HOST", "").strip() or None
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587") or 587)
+    SMTP_USER = os.getenv("SMTP_USER", "").strip() or None
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "") or None
+    NOTIFY_EMAIL_FROM = os.getenv("NOTIFY_EMAIL_FROM", "").strip() or None
+    NOTIFY_EMAIL_TO = os.getenv("NOTIFY_EMAIL_TO", "").strip() or None
+
     # Windows Security Log Analysis Defaults
     DEFAULT_LOG_ANALYSIS_DAYS = int(os.getenv("ANALYSIS_WINDOW_DAYS", "7"))
     BRUTE_FORCE_FAILURE_THRESHOLD = 5  # 5 failed logons (4625)

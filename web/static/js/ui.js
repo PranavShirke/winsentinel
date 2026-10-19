@@ -72,6 +72,20 @@ document.addEventListener("alpine:init", function () {
     };
   });
 
+  /* ---- Administrator-rights banner (dismissed per browser session) ---- */
+  Alpine.data("elevBanner", function () {
+    return {
+      visible: true,
+      init: function () {
+        try { this.visible = sessionStorage.getItem("ws-elev-dismissed") !== "1"; } catch (e) { /* show it */ }
+      },
+      dismiss: function () {
+        this.visible = false;
+        try { sessionStorage.setItem("ws-elev-dismissed", "1"); } catch (e) { /* ignore */ }
+      },
+    };
+  });
+
   /* ---- Auto-scan countdown chip ---- */
   Alpine.data("autoScan", function () {
     return {
@@ -134,9 +148,29 @@ document.addEventListener("alpine:init", function () {
         this.found = [];
         this.active = 0;
         var self = this;
-        this.$nextTick(function () { if (self.$refs.input) self.$refs.input.focus(); });
+        // The overlay is display:none until Alpine applies x-show, and an element that is not
+        // displayed cannot take focus. Retry on the next frames until the input really has focus.
+        var attempts = 0;
+        (function focusInput() {
+          var input = self.$refs.input;
+          if (input) input.focus();
+          if (document.activeElement !== input && attempts++ < 10) requestAnimationFrame(focusInput);
+        })();
       },
       hide: function () { this.open = false; },
+      // A key typed in the instant between the overlay opening and the input gaining focus would be
+      // lost, so catch it here, focus the input and keep the character.
+      capture: function (e) {
+        var input = this.$refs.input;
+        // defaultPrevented: the key that just opened the palette (Ctrl+K or "/") was already handled
+        if (e.defaultPrevented || !this.open || !input || document.activeElement === input) return;
+        input.focus();
+        if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          this.q += e.key;
+          this.onInput();
+          e.preventDefault();
+        }
+      },
       slash: function (e) {
         var tag = (e.target.tagName || "").toLowerCase();
         if (tag === "input" || tag === "textarea" || tag === "select") return;
@@ -315,7 +349,12 @@ document.addEventListener("alpine:init", function () {
         this.busy = false;
         this.open = true;
         var self = this;
-        this.$nextTick(function () { if (self.$refs.note) self.$refs.note.focus(); });
+        var tries = 0;
+        (function focusNote() {
+          var note = self.$refs.note;
+          if (note) note.focus();
+          if (document.activeElement !== note && tries++ < 10) requestAnimationFrame(focusNote);
+        })();
       },
       close: function () { this.open = false; },
       get needsNote() { return this.status === "accepted" || this.status === "false_positive"; },

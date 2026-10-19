@@ -200,6 +200,8 @@ def build_pdf_report(scan_id: int) -> Optional[bytes]:
             _p("Evidence: " + f["evidence"], st["mono"]),
             _p("Remediation: " + f["remediation"], st["body"]),
         ]
+        if f.get("fix") and f["fix"].get("commands"):
+            block.append(_p("Suggested command (run yourself, elevated): " + " ; ".join(f["fix"]["commands"][:2]), st["mono"]))
         tags = _tags(f["frameworks"])
         if tags:
             block.append(_p(tags, st["small"]))

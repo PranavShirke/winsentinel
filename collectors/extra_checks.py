@@ -452,3 +452,214 @@ def check_startup_entries(scan_id: Optional[int] = None) -> List[Finding]:
         except OSError:
             continue
     return [evaluate_startup_entries(entries, scan_id)]
+
+
+# ---------------------------------------------------------------------------
+# Additional hardening: Defender exclusions, SMB signing, PowerShell, name resolution, accounts, WinRM
+# ---------------------------------------------------------------------------
+_BROAD_EXCLUSION_PATH = re.compile(r"^([a-z]:\\?|[a-z]:\\users\\?|[a-z]:\\windows\\?|.*\\(temp|downloads|appdata)(\\.*)?)$", re.IGNORECASE)
+_RISKY_EXCLUDED_EXT = {"exe", "dll", "ps1", "bat", "cmd", "js", "vbs", "scr", "msi"}
+_RISKY_EXCLUDED_PROC = {"powershell.exe", "pwsh.exe", "cmd.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe"}
+
+
+def _as_list(value: Any) -> List[str]:
+    """PowerShell returns null, a string or an array; normalise to a list of strings."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [str(v) for v in value if v not in (None, "")]
+    return [str(value)] if str(value) != "" else []
+
+
+def evaluate_defender_exclusions(
+    paths: Any, extensions: Any, processes: Any, scan_id: Optional[int] = None
+) -> Finding:
+    """
+    Review Microsoft Defender exclusions. Attackers and careless installers add broad exclusions
+    (a whole drive, Temp, *.exe) so malware there is never scanned.
+
+    Args:
+        paths: ExclusionPath values.
+        extensions: ExclusionExtension values.
+        processes: ExclusionProcess values.
+    """
+    paths, extensions, processes = _as_list(paths), _as_list(extensions), _as_list(processes)
+    if any("must be an administrator" in x.lower() or x.upper().startswith("N/A") for x in paths + extensions + processes):
+        return _error(scan_id, "Defender Exclusions Unreadable (Needs Administrator)",
+                      "Get-MpPreference hides exclusions from non-administrators.",
+                      "Run WinSentinel as Administrator (run.bat) to review Defender exclusions.")
+    risky = (
+        [f"path {p}" for p in paths if _BROAD_EXCLUSION_PATH.match(p.strip())]
+        + [f"extension .{e.lstrip('.')}" for e in extensions if e.lstrip(".").lower() in _RISKY_EXCLUDED_EXT]
+        + [f"process {p}" for p in processes if p.lower().split("\\")[-1] in _RISKY_EXCLUDED_PROC]
+    )
+    total = len(paths) + len(extensions) + len(processes)
+    if risky:
+        return _finding(scan_id, "Defender Exclusions Cover High-Risk Locations", "fail",
+                        f"{total} exclusion(s) configured; high-risk: {'; '.join(risky[:8])}.",
+                        "Remove broad exclusions (Remove-MpPreference) so malware cannot hide there.", 3, 4)
+    if total:
+        return _finding(scan_id, "Defender Has Exclusions Configured", "fail",
+                        f"{total} exclusion(s): " + "; ".join((paths + extensions + processes)[:8]),
+                        "Confirm each exclusion is still required and was added by you.", 2, 2)
+    return _finding(scan_id, "No Defender Exclusions Configured", "pass", "Get-MpPreference reports no exclusions.")
+
+
+def evaluate_smb_signing(require_signing: Optional[bool], scan_id: Optional[int] = None) -> Finding:
+    """SMB signing blocks relay and tampering attacks on file-sharing traffic."""
+    if require_signing is True:
+        return _finding(scan_id, "SMB Signing Is Required", "pass", "RequireSecuritySignature = True.")
+    if require_signing is False:
+        return _finding(scan_id, "SMB Signing Is Not Required", "fail",
+                        "RequireSecuritySignature = False: SMB traffic can be relayed or tampered with.",
+                        "Require SMB signing: Set-SmbServerConfiguration -RequireSecuritySignature $true -Force", 3, 3)
+    return _error(scan_id, "SMB Signing State Unknown", "Get-SmbServerConfiguration returned no value.",
+                  "Check SMB settings manually.")
+
+
+def evaluate_powershell_policy(policy: Optional[str], scan_id: Optional[int] = None) -> Finding:
+    """Flag machine-wide execution policies that run any script without checks."""
+    if policy is None:
+        return _error(scan_id, "PowerShell Execution Policy Unknown", "Get-ExecutionPolicy returned nothing.",
+                      "Check with Get-ExecutionPolicy -List.")
+    if policy.lower() in ("unrestricted", "bypass"):
+        return _finding(scan_id, "PowerShell Execution Policy Allows Any Script", "fail",
+                        f"LocalMachine execution policy is {policy}.",
+                        "Set-ExecutionPolicy RemoteSigned -Scope LocalMachine", 3, 3)
+    return _finding(scan_id, "PowerShell Execution Policy Is Restrictive", "pass", f"LocalMachine policy: {policy}.")
+
+
+def evaluate_script_block_logging(value: Optional[int], scan_id: Optional[int] = None) -> Finding:
+    """Script Block Logging records PowerShell code in the event log, key evidence after an intrusion."""
+    if value == 1:
+        return _finding(scan_id, "PowerShell Script Block Logging Is Enabled", "pass", "EnableScriptBlockLogging = 1.")
+    return _finding(scan_id, "PowerShell Script Block Logging Is Not Enabled", "fail",
+                    "Policy EnableScriptBlockLogging is not set to 1, so malicious PowerShell leaves no record (Event 4104).",
+                    "Enable 'Turn on PowerShell Script Block Logging' in Group Policy or set the registry value to 1.", 2, 3)
+
+
+def evaluate_llmnr(enable_multicast: Optional[int], scan_id: Optional[int] = None) -> Finding:
+    """LLMNR lets any host on the LAN answer name lookups, enabling credential capture (Responder)."""
+    if enable_multicast == 0:
+        return _finding(scan_id, "LLMNR Name Resolution Is Disabled", "pass", "EnableMulticast = 0.")
+    return _finding(scan_id, "LLMNR Name Resolution Is Enabled", "fail",
+                    "EnableMulticast is not 0: the machine answers LLMNR queries, which attackers on the LAN can abuse "
+                    "to capture NTLM hashes.",
+                    "Disable LLMNR: set HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient\\EnableMulticast to 0.", 3, 3)
+
+
+def evaluate_netbios(active_interface_options: List[int], scan_id: Optional[int] = None) -> Finding:
+    """
+    NetBIOS over TCP/IP (NBT-NS) is another name-poisoning channel.
+
+    Args:
+        active_interface_options: NetbiosOptions of interfaces that hold an IP address
+            (0 = default/DHCP, 1 = enabled, 2 = disabled).
+    """
+    if not active_interface_options:
+        return _finding(scan_id, "NetBIOS over TCP/IP Not Active", "pass", "No active interface with NetBIOS settings found.")
+    enabled = [o for o in active_interface_options if o != 2]
+    if enabled:
+        return _finding(scan_id, f"NetBIOS over TCP/IP Is Enabled on {len(enabled)} Interface(s)", "fail",
+                        f"{len(enabled)} of {len(active_interface_options)} active interface(s) do not disable NetBIOS.",
+                        "Disable NetBIOS over TCP/IP in each adapter's advanced TCP/IP settings (or DHCP option).", 2, 3)
+    return _finding(scan_id, "NetBIOS over TCP/IP Is Disabled", "pass", "All active interfaces disable NetBIOS.")
+
+
+def evaluate_local_accounts(users: List[Dict[str, Any]], scan_id: Optional[int] = None) -> List[Finding]:
+    """
+    Review enabled local accounts for missing password requirements and passwords that never expire.
+
+    Args:
+        users: Dicts with Name, Enabled, PasswordRequired and PasswordExpires (None = never expires).
+    """
+    enabled = [u for u in users if u.get("Enabled")]
+    no_password = [u["Name"] for u in enabled if u.get("PasswordRequired") is False]
+    never_expire = [u["Name"] for u in enabled if u.get("PasswordExpires") in (None, "")]
+    findings: List[Finding] = []
+    if no_password:
+        findings.append(_finding(
+            scan_id, "Accounts Without a Required Password", "fail",
+            f"Enabled account(s) that may sign in with an empty password: {', '.join(no_password)}.",
+            "Require a password: net user <name> /passwordreq:yes and set a strong password.", 3, 4))
+    if never_expire:
+        findings.append(_finding(
+            scan_id, "Enabled Accounts With Passwords That Never Expire", "fail",
+            f"{len(never_expire)} enabled account(s): {', '.join(never_expire)}. Stolen credentials stay valid forever.",
+            "Use long unique passwords with rotation, or MFA / passkeys; clear 'Password never expires'.", 2, 3))
+    if not findings:
+        findings.append(_finding(scan_id, "Local Account Password Policies Look Sound", "pass",
+                                 f"{len(enabled)} enabled local account(s) require a password and can expire."))
+    return findings
+
+
+def evaluate_winrm(status: Optional[str], scan_id: Optional[int] = None) -> Finding:
+    """WinRM allows remote PowerShell; on a workstation it is normally not needed."""
+    if status is None:
+        return _error(scan_id, "WinRM Status Unknown", "Get-Service WinRM returned nothing.", "Check manually.")
+    if status.lower() == "running":
+        return _finding(scan_id, "WinRM Service Is Running", "fail",
+                        "The Windows Remote Management service is running: remote PowerShell sessions are possible.",
+                        "If you do not manage this PC remotely: Stop-Service WinRM; Set-Service WinRM -StartupType Disabled", 3, 3)
+    return _finding(scan_id, "WinRM Service Is Not Running", "pass", f"WinRM status: {status}.")
+
+
+def _active_netbios_options() -> Optional[List[int]]:
+    """
+    Read TcpipNetbiosOptions (0 default/DHCP, 1 enabled, 2 disabled) of every IP-enabled adapter.
+
+    Returns:
+        List of option values, or None if the adapters could not be queried.
+    """
+    ok, data, _ = _ps_json(
+        "Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=true' | "
+        "Select-Object Description, TcpipNetbiosOptions | ConvertTo-Json -Compress"
+    )
+    if not ok:
+        return None
+    return [int(d.get("TcpipNetbiosOptions") or 0) for d in data]
+
+
+def check_additional_hardening(scan_id: Optional[int] = None) -> List[Finding]:
+    """Run the extra hardening checks: Defender exclusions, SMB signing, PowerShell, LLMNR/NetBIOS, accounts, WinRM."""
+    findings: List[Finding] = []
+
+    ok, data, err = _ps_json("Get-MpPreference | Select-Object ExclusionPath, ExclusionExtension, ExclusionProcess | ConvertTo-Json -Compress")
+    if ok and data:
+        d = data[0]
+        findings.append(evaluate_defender_exclusions(d.get("ExclusionPath"), d.get("ExclusionExtension"), d.get("ExclusionProcess"), scan_id))
+    else:
+        findings.append(_error(scan_id, "Defender Exclusions Query Failed", err or "No data returned.",
+                               "Run WinSentinel as Administrator and retry."))
+
+    ok, data, err = _ps_json("Get-SmbServerConfiguration | Select-Object RequireSecuritySignature | ConvertTo-Json -Compress")
+    if ok and data:
+        findings.append(evaluate_smb_signing(bool(data[0].get("RequireSecuritySignature")), scan_id))
+    else:
+        findings.append(_error(scan_id, "SMB Signing Query Failed", err or "No data.", "Run as Administrator."))
+
+    ok, data, err = _ps_json("[PSCustomObject]@{Policy = (Get-ExecutionPolicy -Scope LocalMachine).ToString()} | ConvertTo-Json -Compress")
+    findings.append(evaluate_powershell_policy(data[0].get("Policy") if ok and data else None, scan_id))
+
+    if winreg is not None:
+        hklm = winreg.HKEY_LOCAL_MACHINE
+        findings.append(evaluate_script_block_logging(read_registry_value(
+            hklm, r"SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging", "EnableScriptBlockLogging"), scan_id))
+        findings.append(evaluate_llmnr(read_registry_value(
+            hklm, r"SOFTWARE\Policies\Microsoft\Windows NT\DNSClient", "EnableMulticast"), scan_id))
+        netbios = _active_netbios_options()
+        findings.append(evaluate_netbios(netbios, scan_id) if netbios is not None else
+                        _error(scan_id, "NetBIOS Status Query Failed", "Could not read network adapter configuration.",
+                               "Check adapter advanced TCP/IP settings manually."))
+
+    ok, data, err = _ps_json(
+        "Get-LocalUser | Select-Object Name, Enabled, PasswordRequired, "
+        "@{n='PasswordExpires';e={if ($_.PasswordExpires) { $_.PasswordExpires.ToString('o') } else { $null }}} | ConvertTo-Json -Compress")
+    if ok:
+        findings += evaluate_local_accounts(data, scan_id)
+    else:
+        findings.append(_error(scan_id, "Local Account Password Review Failed", err, "Run as Administrator and retry."))
+
+    ok, data, err = _ps_json("Get-Service WinRM | Select-Object @{n='Status';e={$_.Status.ToString()}} | ConvertTo-Json -Compress")
+    findings.append(evaluate_winrm(data[0].get("Status") if ok and data else None, scan_id))
+    return findings

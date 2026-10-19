@@ -10,6 +10,9 @@ document.addEventListener("DOMContentLoaded", function () {
   initFindingsTable();
   initHeatBar();
   initPaletteButtons();
+  initCopyButtons();
+  initLiveMonitor();
+  initLogAnalytics();
   initGaugeAndCounters();
   initRowFilters();
   showPostReloadToast();
@@ -113,6 +116,137 @@ function showPostReloadToast() {
   var msg = null;
   try { msg = sessionStorage.getItem("ws-toast"); sessionStorage.removeItem("ws-toast"); } catch (e) { return; }
   if (msg && window.wsToast) setTimeout(function () { window.wsToast(msg, "success"); }, 600);
+}
+
+/** Poll the live Security-log monitor, update the top-bar chip and toast new alerts. */
+function initLiveMonitor() {
+  var chip = document.getElementById("live-chip");
+  if (!chip) return;
+  var text = document.getElementById("live-chip-text");
+  var count = document.getElementById("live-chip-count");
+  var sinceId = null;
+  var unseen = 0;
+
+  function poll() {
+    fetch("/api/live/status?since_id=" + (sinceId || 0), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var m = d.monitor || {};
+        chip.setAttribute("data-state", m.enabled ? (m.last_error ? "error" : "on") : "off");
+        if (text) text.textContent = m.enabled ? "Live" : "Live off";
+        chip.title = m.enabled
+          ? "Monitoring the Security log every " + m.interval_seconds + "s" + (m.last_error ? " (last error: " + m.last_error + ")" : "")
+          : (m.reason || "Live monitor is off");
+
+        if (sinceId === null) { sinceId = d.max_id; return; }  // first poll only sets the baseline
+        if (d.alerts && d.alerts.length) {
+          d.alerts.slice().reverse().forEach(function (a) {
+            unseen += 1;
+            if (window.wsToast) window.wsToast(a.severity + ": " + a.type + " (" + a.account + ")", a.severity === "Critical" ? "error" : "info");
+          });
+          sinceId = d.max_id;
+          if (count) count.textContent = String(unseen);
+          chip.classList.add("has-new");
+          if (window.location.pathname === "/alerts") setTimeout(function () { window.location.reload(); }, 1500);
+        }
+      })
+      .catch(function () { /* server restarting or logged out: try again next tick */ });
+  }
+  poll();
+  setInterval(poll, 20000);
+}
+
+/** Security-log analytics charts on the Alerts page (top accounts / IPs, logon types, hourly timeline). */
+function initLogAnalytics() {
+  var root = document.getElementById("analytics");
+  if (!root || typeof Chart === "undefined") return;
+  var scanId = root.getAttribute("data-scan");
+
+  fetch("/api/log-analytics?scan_id=" + encodeURIComponent(scanId), { credentials: "same-origin" })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.available) {
+        root.querySelectorAll(".chart-panel").forEach(function (p) { p.hidden = true; });
+        var note = document.getElementById("analytics-note");
+        if (note) note.hidden = false;
+        return;
+      }
+      applyChartDefaults();
+      var signal = cssVar("--signal"), red = cssVar("--sev-critical"), green = cssVar("--sev-low"), orange = cssVar("--sev-high");
+      var names = function (arr) { return arr.map(function (x) { return x.name; }); };
+      var counts = function (arr) { return arr.map(function (x) { return x.count; }); };
+      var empty = function (arr) { return arr.length ? arr : [{ name: "none", count: 0 }]; };
+
+      function bar(id, rows, color) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        rows = empty(rows);
+        new Chart(el, {
+          type: "bar",
+          data: { labels: names(rows), datasets: [{ data: counts(rows), backgroundColor: color, borderRadius: 3, maxBarThickness: 22 }] },
+          options: {
+            indexAxis: "y", responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true, ticks: { precision: 0 } }, y: { grid: { display: false } } },
+          },
+        });
+      }
+      bar("topAccountsChart", d.top_accounts, red);
+      bar("topIpsChart", d.top_ips, orange);
+
+      var types = d.logon_types.length ? d.logon_types : [{ name: "none", failed: 0, success: 0 }];
+      new Chart(document.getElementById("logonTypeChart"), {
+        type: "bar",
+        data: {
+          labels: types.map(function (t) { return t.name; }),
+          datasets: [
+            { label: "Failed", data: types.map(function (t) { return t.failed; }), backgroundColor: red, borderRadius: 3 },
+            { label: "Successful", data: types.map(function (t) { return t.success; }), backgroundColor: green, borderRadius: 3 },
+          ],
+        },
+        options: {
+          indexAxis: "y", responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: "bottom", labels: { boxWidth: 9, boxHeight: 9 } } },
+          scales: { x: { beginAtZero: true, stacked: true, ticks: { precision: 0 } }, y: { stacked: true, grid: { display: false } } },
+        },
+      });
+
+      var hourly = empty(d.hourly);
+      new Chart(document.getElementById("hourlyChart"), {
+        type: "line",
+        data: {
+          labels: hourly.map(function (h) { return h.name.slice(5); }),
+          datasets: [{ label: "Failed logons", data: counts(hourly), borderColor: signal, backgroundColor: "rgba(61, 219, 217, 0.12)", fill: true, tension: 0.25, pointRadius: 2 }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false }, ticks: { maxTicksLimit: 12 } } },
+        },
+      });
+    })
+    .catch(function (err) { console.error("Log analytics error:", err); });
+}
+
+/** Copy-to-clipboard for fix commands: <button data-copy-target="#id">. */
+function initCopyButtons() {
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-copy-target]");
+    if (!btn) return;
+    var target = document.querySelector(btn.getAttribute("data-copy-target"));
+    if (!target) return;
+    var done = function () { if (window.wsToast) window.wsToast("Command copied. Paste it into an elevated PowerShell.", "success"); };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(target.textContent).then(done, function () { window.wsToast("Could not copy. Select the text and press Ctrl+C.", "error"); });
+    } else {
+      var range = document.createRange();
+      range.selectNodeContents(target);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      window.wsToast("Command selected. Press Ctrl+C to copy.", "info");
+    }
+  });
 }
 
 /** 3. Scan trigger, pipeline stepper and status polling. */

@@ -1085,6 +1085,7 @@ def run_config_audit(scan_id: Optional[int] = None) -> List[Finding]:
         ("BitLocker", extra_checks.check_bitlocker),
         ("System Hardening (UAC, Secure Boot, LSA)", extra_checks.check_system_hardening),
         ("Network Shares", extra_checks.check_network_shares),
+        ("Additional Hardening", extra_checks.check_additional_hardening),
         ("Startup Entries", extra_checks.check_startup_entries),
         ("Password Policy", check_password_policy),
         ("User Accounts", check_user_accounts),

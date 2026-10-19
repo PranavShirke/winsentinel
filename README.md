@@ -6,7 +6,7 @@
 [![Flask](https://img.shields.io/badge/Flask-3.0-green?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite-lightblue?logo=sqlite)](https://sqlite.org/)
 [![License](https://img.shields.io/badge/License-Academic-orange)](./LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-98%20Passing-brightgreen)](#running-tests)
+[![Tests](https://img.shields.io/badge/Tests-125%20Passing-brightgreen)](#running-tests)
 
 A Python-based Windows security posture analysis tool built as a micro-project for three academic cybersecurity subjects:
 **VAPT Lab** · **Security Information Management** · **Application Security**
@@ -62,6 +62,12 @@ WinSentinel audits a Windows machine's security posture by:
 | **Risk register** | Mark findings Accepted / In progress / False positive with a justification; remembered across scans and reflected in an adjusted posture score |
 | **ATT&CK and CIS mapping** | Every finding and alert is tagged with MITRE ATT&CK techniques and CIS Controls v8 safeguards; `/frameworks` shows coverage |
 | **PDF and HTML reports** | A4 PDF (reportlab) and self-contained HTML with methodology, tags, decisions and limitations |
+| **Live log monitor** | Polls the Security log every minute and raises brute-force, new-account and privileged-group alerts as they happen, with a toast, a top-bar indicator and notifications |
+| **Notifications** | Windows desktop notification for High/Critical alerts; optional Slack/Discord/Teams webhook and SMTP email |
+| **Fix commands** | Copy-ready PowerShell for each finding (WinSentinel never runs them) |
+| **Log analytics** | Most targeted accounts, top source IPs, logon types (RDP vs console) and an attack timeline |
+| **Report integrity** | SHA-256 recorded for every PDF/HTML report; `/report/verify` proves a copy is unmodified |
+| **More hardening checks** | Defender exclusions, SMB signing, PowerShell policy and script-block logging, LLMNR, NetBIOS, password-never-expires accounts, WinRM |
 | **Auto-scan** | Optional scheduled scans (`AUTO_SCAN_INTERVAL_MINUTES` in `.env`) |
 | **Scan Comparison** | Diff two scans to see new, resolved and still-open risks (drift detection) |
 | **CSV Export** | Export any scan's findings for spreadsheets or ticketing tools |
@@ -152,7 +158,7 @@ WinSentinel/
 │   ├── generate_failed_logins.py   # Simulate Event Log 4625 entries
 │   └── load_sample_events.py       # Load fixture events into DB
 │
-├── tests/                          # Unit & integration tests (98 tests)
+├── tests/                          # Unit & integration tests (125 tests)
 │   ├── test_skeleton.py            # DB schema, user auth, config defaults
 │   ├── test_config_parsers.py      # Config audit parser coverage
 │   ├── test_bruteforce.py          # Brute-force detection logic
@@ -175,6 +181,13 @@ WinSentinel/
 | **Privileges** | Administrator (for live audit; demo works without) |
 
 ---
+
+## Quick Start (Windows)
+
+1. Double-click **`setup.bat`**: creates a virtual environment, installs dependencies, generates a `SECRET_KEY` and asks you to set the dashboard password.
+2. Double-click **`run.bat`**: it asks for Administrator permission (needed to read the Security log and BitLocker status) and starts the dashboard at http://127.0.0.1:5000.
+
+The dashboard shows a banner if it is running without Administrator rights. WinSentinel stays read-only either way; Administrator only widens what it is allowed to *read*.
 
 ## Installation
 
@@ -272,6 +285,30 @@ Open your browser at **[http://127.0.0.1:5000](http://127.0.0.1:5000)** to view 
 
 ---
 
+## Live Monitor and Notifications
+
+When the server runs elevated, the live monitor checks the Security log every `LIVE_MONITOR_INTERVAL_SECONDS` (default 60). It applies the same rules as a scan (5 failed logons in 10 minutes, success after failures, new account, lockout, privileged-group change). New alerts appear on the **Alerts** page, in the top-bar indicator and as toasts, and High/Critical alerts are sent to:
+
+| Channel | Setting in `.env` |
+|---|---|
+| Windows desktop notification | `NOTIFY_DESKTOP=1` (default) |
+| Webhook (Slack / Discord / Teams) | `NOTIFY_WEBHOOK_URL=https://...` |
+| Email (SMTP + STARTTLS) | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `NOTIFY_EMAIL_FROM`, `NOTIFY_EMAIL_TO` |
+
+`NOTIFY_MIN_SEVERITY` (default `High`) sets the threshold, and `LIVE_MONITOR=auto|on|off` controls the monitor. Notification text contains only the alert title and a short summary.
+
+## Report Integrity
+
+Every PDF or HTML report served by the dashboard has its SHA-256 recorded and returned in the `X-Report-SHA256` header. Upload a file on **Report > Verify a report** to check it is exactly the file WinSentinel generated; any edit, even one character, makes verification fail.
+
+## Automated Tests and CI
+
+- `py -m pytest tests/` runs the unit, web and feature tests.
+- `tests/test_browser.py` drives the real dashboard in Edge or Chrome (Playwright) against a seeded fixture server and fails on any console or CSP error. Set it up once with `npm install --prefix tests/browser`.
+- `.github/workflows/ci.yml` runs both on every push (Windows runner) plus a `pip-audit` dependency check.
+
+---
+
 ## NVD API Key (optional)
 
 The CVE lookup works without a key but is rate-limited (about 5 requests per 30 seconds, so a scan with several allow-listed apps takes a few minutes). A free key raises that roughly tenfold.
@@ -338,7 +375,7 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-Expected: **98 passed** in ~20 seconds.
+Expected: **125 passed** in ~30 seconds (the real-browser test is skipped automatically unless Node.js and `npm install --prefix tests/browser` are available).
 
 ```
 tests/test_skeleton.py         4 tests   DB schema, user auth, config defaults

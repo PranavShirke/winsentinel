@@ -1,0 +1,11 @@
+{
+  "name": "winsentinel-browser-tests",
+  "private": true,
+  "description": "Real-browser smoke tests for the WinSentinel dashboard (Playwright driving Edge or Chrome).",
+  "scripts": {
+    "test": "node ui_smoke.js"
+  },
+  "devDependencies": {
+    "playwright-core": "1.64.1"
+  }
+}

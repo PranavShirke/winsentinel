@@ -36,3 +36,8 @@ env/
 
 # Report generated files
 reports/generated/
+
+# Node / browser tests
+node_modules/
+tests/browser/node_modules/
+tests/browser/package-lock.json.bak

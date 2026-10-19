@@ -114,6 +114,17 @@
                         <div class="detail-label">Result</div>
                         <p class="text-dim">Control is compliant. No action required.</p>
                       {% endif %}
+                      {% if f.fix %}
+                        <div class="fixbox">
+                          <div class="detail-label">Fix command (review, copy and run it yourself)</div>
+                          {% if f.fix.commands %}
+                            <pre class="code" id="fix-{{ f.id }}">{{ f.fix.text }}</pre>
+                            <button type="button" class="btn btn-secondary btn-sm" data-copy-target="#fix-{{ f.id }}">{{ icon('clipboard', 'icon-sm') }} Copy command</button>
+                          {% endif %}
+                          {% if f.fix.note %}<p class="text-faint text-sm">{{ f.fix.note }}</p>{% endif %}
+                          <p class="text-faint text-sm">Run in an elevated PowerShell and replace any &lt;placeholders&gt;. WinSentinel never runs this for you.</p>
+                        </div>
+                      {% endif %}
                       <div class="decision-note" x-show="hasDecision">
                         <strong x-text="registerLabel"></strong> <span class="text-faint" x-text="byText"></span><br>
                         <span x-text="noteText"></span>

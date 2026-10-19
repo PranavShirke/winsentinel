@@ -149,6 +149,36 @@ def init_db(db_path: Optional[str] = None) -> None:
         );
     """)
 
+    # 9. Live alerts raised by the real-time Security-log monitor (independent of scans)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS live_alerts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fingerprint TEXT UNIQUE NOT NULL,
+            detected_at TEXT NOT NULL,
+            alert_type TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            account TEXT,
+            source_ip TEXT,
+            count INTEGER NOT NULL,
+            severity TEXT NOT NULL,
+            details TEXT NOT NULL
+        );
+    """)
+
+    # 10. SHA-256 of every report file served, so a copy can be verified later
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS report_hashes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sha256 TEXT NOT NULL,
+            scan_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            created_by TEXT NOT NULL DEFAULT ''
+        );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_report_hashes_sha ON report_hashes(sha256);")
+
     # Drop CVE results cached by older matching logic (keys without a "#" version suffix)
     cursor.execute("DELETE FROM cve_cache WHERE product NOT LIKE '%#%';")
 
@@ -861,3 +891,86 @@ def get_finding_statuses(db_path: Optional[str] = None) -> Dict[str, Dict[str, A
     rows = conn.execute("SELECT * FROM finding_status;").fetchall()
     conn.close()
     return {r["fingerprint"]: dict(r) for r in rows}
+
+
+# -------------------------------------------------------------------------
+# Live Alert Helpers
+# -------------------------------------------------------------------------
+
+def insert_live_alert(
+    fingerprint: str,
+    alert_type: str,
+    timestamp: str,
+    account: str,
+    source_ip: str,
+    count: int,
+    severity: str,
+    details: str,
+    db_path: Optional[str] = None,
+) -> Optional[int]:
+    """
+    Store a live alert unless the same fingerprint was already recorded.
+
+    Returns:
+        The new alert id, or None if it was a duplicate.
+    """
+    conn = get_db_connection(db_path)
+    try:
+        cur = conn.execute(
+            """
+            INSERT OR IGNORE INTO live_alerts
+                (fingerprint, detected_at, alert_type, timestamp, account, source_ip, count, severity, details)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (fingerprint, datetime.now(timezone.utc).isoformat(), alert_type, timestamp, account, source_ip,
+             count, severity, details),
+        )
+        conn.commit()
+        return cur.lastrowid if cur.rowcount else None
+    finally:
+        conn.close()
+
+
+def get_live_alerts(since_id: int = 0, limit: int = 100, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Return live alerts newer than `since_id`, newest first."""
+    conn = get_db_connection(db_path)
+    rows = conn.execute(
+        "SELECT * FROM live_alerts WHERE id > ? ORDER BY id DESC LIMIT ?;", (since_id, limit)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# -------------------------------------------------------------------------
+# Report Integrity Helpers
+# -------------------------------------------------------------------------
+
+def record_report_hash(
+    sha256: str, scan_id: int, kind: str, size_bytes: int, created_by: str = "", db_path: Optional[str] = None
+) -> None:
+    """Remember the SHA-256 of a report file that was served to the user."""
+    conn = get_db_connection(db_path)
+    conn.execute(
+        "INSERT INTO report_hashes (sha256, scan_id, kind, size_bytes, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?);",
+        (sha256, scan_id, kind, size_bytes, datetime.now(timezone.utc).isoformat(), created_by),
+    )
+    conn.commit()
+    conn.close()
+
+
+def find_report_hash(sha256: str, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Look up a recorded report hash (most recent first)."""
+    conn = get_db_connection(db_path)
+    row = conn.execute(
+        "SELECT * FROM report_hashes WHERE sha256 = ? ORDER BY id DESC LIMIT 1;", (sha256,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_recent_report_hashes(limit: int = 8, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Return the most recently recorded report hashes."""
+    conn = get_db_connection(db_path)
+    rows = conn.execute("SELECT * FROM report_hashes ORDER BY id DESC LIMIT ?;", (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

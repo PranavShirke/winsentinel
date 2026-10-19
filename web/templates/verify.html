@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+{% from "_macros.html" import icon %}
+
+{% block title %}Verify report{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-kicker">Integrity</div>
+    <h1 class="page-title">Verify a report</h1>
+    <p class="page-subtitle">Every PDF and HTML report WinSentinel hands out has its SHA-256 fingerprint recorded. Upload a report file to check it is exactly the file that was generated and has not been edited since.</p>
+  </div>
+  <div class="page-actions"><a class="btn btn-secondary btn-sm" href="{{ url_for('views.report_preview') }}">{{ icon('report', 'icon-sm') }} Back to report</a></div>
+</div>
+
+<section class="panel">
+  <form method="POST" action="{{ url_for('views.verify_report') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-group">
+      <label for="report-file">Report file (.pdf or .html)</label>
+      <input id="report-file" name="report" type="file" class="form-input" accept=".pdf,.html,application/pdf,text/html" required>
+    </div>
+    <button type="submit" class="btn btn-primary">{{ icon('shield-check', 'icon-sm') }} Verify</button>
+  </form>
+
+  {% if result %}
+    <div class="verify-result verify-{{ result.state }}" role="status">
+      {% if result.state == 'match' %}
+        <strong>Authentic.</strong> This file matches a report generated for scan #{{ result.record.scan_id }} ({{ result.record.kind|upper }}, {{ result.record.created_at[:19].replace('T', ' ') }} UTC{% if result.record.created_by %}, by {{ result.record.created_by }}{% endif %}). It has not been modified.
+      {% elif result.state == 'nomatch' %}
+        <strong>No match.</strong> This file was not produced by this WinSentinel installation, or it has been modified (even one character changes the fingerprint).
+      {% else %}
+        {{ result.message }}
+      {% endif %}
+      {% if result.sha256 %}<div class="mono hash-line">SHA-256 {{ result.sha256 }}</div>{% endif %}
+    </div>
+  {% endif %}
+</section>
+
+<section class="panel panel-flush">
+  <div class="panel-title"><span>Recently issued reports</span><span class="hint">Fingerprints recorded at download</span></div>
+  {% if not recent %}
+    <div class="empty-state"><p>No reports have been downloaded yet.</p></div>
+  {% else %}
+    <div class="table-responsive">
+      <table class="table">
+        <thead><tr><th>When (UTC)</th><th>Scan</th><th>Type</th><th>Size</th><th>SHA-256</th></tr></thead>
+        <tbody>
+          {% for r in recent %}
+            <tr>
+              <td class="mono text-dim nowrap">{{ r.created_at[:19].replace('T', ' ') }}</td>
+              <td class="mono">#{{ r.scan_id }}</td>
+              <td class="mono">{{ r.kind|upper }}</td>
+              <td class="mono text-dim">{{ (r.size_bytes / 1024)|round(1) }} KB</td>
+              <td class="mono hash-cell">{{ r.sha256 }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</section>
+<p class="text-faint text-sm">The fingerprint is also sent in the <code>X-Report-SHA256</code> response header. To check by hand: <code>Get-FileHash .\report.pdf -Algorithm SHA256</code>.</p>
+{% endblock %}

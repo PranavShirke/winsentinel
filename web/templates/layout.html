@@ -35,7 +35,7 @@
           <li><a href="{{ url_for('views.frameworks') }}" class="nav-link {% if active_page == 'frameworks' %}active{% endif %}" {% if active_page == 'frameworks' %}aria-current="page"{% endif %}>{{ icon('matrix') }} Frameworks</a></li>
           <li><a href="{{ url_for('views.history') }}" class="nav-link {% if active_page == 'history' %}active{% endif %}" {% if active_page == 'history' %}aria-current="page"{% endif %}>{{ icon('history') }} Scan history</a></li>
           <li><a href="{{ url_for('views.compare') }}" class="nav-link {% if active_page == 'compare' %}active{% endif %}" {% if active_page == 'compare' %}aria-current="page"{% endif %}>{{ icon('compare') }} Compare scans</a></li>
-          <li><a href="{{ url_for('views.report_preview') }}" class="nav-link {% if active_page == 'report' %}active{% endif %}" {% if active_page == 'report' %}aria-current="page"{% endif %}>{{ icon('report') }} Report</a></li>
+          <li><a href="{{ url_for('views.report_preview') }}" class="nav-link {% if active_page in ('report', 'verify') %}active{% endif %}" {% if active_page == 'report' %}aria-current="page"{% endif %}>{{ icon('report') }} Report</a></li>
         </ul>
       </nav>
 
@@ -63,6 +63,9 @@
               Auto-scan <b x-text="left">...</b>
             </span>
           {% endif %}
+          <a href="{{ url_for('views.alerts') }}" class="live-chip" id="live-chip" data-state="off" title="Real-time Security-log monitor">
+            <span class="pulse"></span><span id="live-chip-text">Live monitor</span><span class="count" id="live-chip-count">0</span>
+          </a>
           <button type="button" class="search-trigger" data-open-palette aria-label="Open command palette">
             {{ icon('search', 'icon-sm') }} <span class="label">Search &amp; commands</span> <kbd>Ctrl K</kbd>
           </button>
@@ -74,6 +77,17 @@
       </header>
 
       <main id="main" class="content-area">
+        {% if not is_elevated %}
+          <div class="banner" x-data="elevBanner" x-show="visible" x-cloak role="note">
+            {{ icon('warn') }}
+            <div class="banner-body">
+              <strong>Running without Administrator rights.</strong> The Windows Security log (brute-force detection and the live monitor), BitLocker and Defender exclusions cannot be read, so those checks show as errors.
+              Close this window and start WinSentinel with <code>run.bat</code> (it asks for Administrator permission).
+            </div>
+            <button type="button" class="banner-close" @click="dismiss" aria-label="Dismiss">&times;</button>
+          </div>
+        {% endif %}
+
         <section id="progress-banner" class="progress-banner" aria-live="polite" aria-label="Scan progress">
           <div class="progress-banner-header">
             <strong>Audit in progress</strong>
@@ -118,7 +132,7 @@
 
   <!-- Command palette -->
   <div class="overlay" x-data="palette" x-cloak x-show="open"
-       @open-palette.window="show" @keydown.window.ctrl.k.prevent="show" @keydown.escape.window="hide" @keydown.slash.window="slash"
+       @open-palette.window="show" @keydown.window.ctrl.k.prevent="show" @keydown.escape.window="hide" @keydown.slash.window="slash" @keydown.window="capture"
        @click.self="hide" role="dialog" aria-modal="true" aria-label="Command palette">
     <div class="dialog palette">
       <input class="palette-input" type="text" placeholder="Search findings or jump to a page..." x-ref="input" x-model="q"

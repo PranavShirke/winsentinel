@@ -43,14 +43,8 @@ def check_elevation(warn_only: bool = True) -> bool:
     Returns:
         bool: True if running with Administrator privileges, False otherwise.
     """
-    is_admin = False
-    try:
-        if sys.platform == "win32":
-            is_admin = bool(ctypes.windll.shell32.IsUserAnAdmin() != 0)
-        else:
-            is_admin = bool(os.getuid() == 0) if hasattr(os, "getuid") else False
-    except Exception as exc:
-        is_admin = False
+    from collectors.privileges import is_elevated
+    is_admin = is_elevated()
 
     if not is_admin:
         warning_msg = (
@@ -201,6 +195,12 @@ def cmd_serve(args: argparse.Namespace) -> None:
         )
     app = create_app()
     from web.scheduler import start_scheduler_if_enabled
+    from web.monitor import start_monitor_if_enabled
+    monitor = start_monitor_if_enabled()
+    if monitor:
+        print(f"[*] Live log monitor: polling the Security log every {monitor.interval_seconds}s")
+    else:
+        print("[!] Live log monitor is OFF (needs Administrator). Start with run.bat for real-time brute-force alerts.")
     if start_scheduler_if_enabled():
         print(f"[*] Auto-scan: every {max(15, cfg.AUTO_SCAN_INTERVAL_MINUTES)} minutes")
 

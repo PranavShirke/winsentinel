@@ -33,7 +33,7 @@ def create_app() -> Flask:
     # Core Security Settings
     app.config["SECRET_KEY"] = cfg.SECRET_KEY
     app.config["DEBUG"] = False
-    app.config["MAX_CONTENT_LENGTH"] = 64 * 1024  # no endpoint needs large request bodies
+    app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # only /report/verify accepts file uploads (reports are < 1 MB)
     app.config["SESSION_COOKIE_HTTPONLY"] = cfg.SESSION_COOKIE_HTTPONLY
     app.config["SESSION_COOKIE_SAMESITE"] = cfg.SESSION_COOKIE_SAMESITE
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=cfg.SESSION_TIMEOUT_MINUTES)

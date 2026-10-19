@@ -16,6 +16,7 @@ Provides routes for the SOC-style web dashboard:
 """
 
 import csv
+import hashlib
 import io
 import os
 import re
@@ -40,7 +41,14 @@ from db.database import (
     get_software_by_scan_id,
     get_scan_summary_counts,
 )
-from db.database import REGISTER_STATUSES, set_finding_status
+from db.database import (
+    REGISTER_STATUSES,
+    find_report_hash,
+    get_live_alerts,
+    get_recent_report_hashes,
+    record_report_hash,
+    set_finding_status,
+)
 from reports.report_data import (
     EXCLUDED_FROM_ADJUSTED,
     adjusted_posture_score,
@@ -58,6 +66,8 @@ from web.security import (
     sanitize_search_query,
 )
 from web.scanner import get_scan_manager
+from web.monitor import monitor_status
+from collectors.privileges import is_elevated
 
 views_bp = Blueprint("views", __name__)
 
@@ -96,6 +106,7 @@ def inject_global_template_context():
     return {
         "current_hostname": hostname,
         "last_scan_time": last_time,
+        "is_elevated": is_elevated(),
         "auto_scan_minutes": sched.interval_seconds // 60 if sched else 0,
         "auto_scan_next": int(sched.next_run) if sched and sched.next_run else 0,
     }
@@ -197,11 +208,15 @@ def alerts():
     if scan:
         alerts_list = [dict(a, frameworks=map_frameworks(a["alert_type"])) for a in get_alerts_by_scan_id(scan["id"])]
 
+    live_alerts = [dict(a, frameworks=map_frameworks(a["alert_type"])) for a in get_live_alerts(limit=50)]
+
     return render_template(
         "alerts.html",
         active_page="alerts",
         scan=scan,
         alerts=alerts_list,
+        live_alerts=live_alerts,
+        monitor=monitor_status(),
     )
 
 
@@ -253,6 +268,44 @@ def report_preview():
     )
 
 
+def _serve_report(content: bytes, mimetype: str, filename: str, kind: str, scan_id: int) -> Response:
+    """
+    Send a report file and remember its SHA-256 so the file can be verified later.
+
+    The digest is also returned in the X-Report-SHA256 header.
+    """
+    digest = hashlib.sha256(content).hexdigest()
+    record_report_hash(digest, scan_id, kind, len(content), created_by=session.get("username", ""))
+    return Response(
+        content,
+        mimetype=mimetype,
+        headers={"Content-Disposition": f"attachment; filename={filename}", "X-Report-SHA256": digest},
+    )
+
+
+@views_bp.route("/report/verify", methods=["GET", "POST"])
+@login_required
+def verify_report():
+    """
+    Check whether a report file is byte-for-byte one that WinSentinel produced.
+
+    The uploaded file is hashed (SHA-256) and looked up among the hashes recorded when reports were
+    downloaded. A match proves the file was not modified since; no match means it was altered or
+    came from elsewhere. The upload is never stored or executed.
+    """
+    result = None
+    if request.method == "POST":
+        upload = request.files.get("report")
+        if not upload or not upload.filename:
+            result = {"state": "error", "message": "Choose a report file to verify."}
+        else:
+            data = upload.read()
+            digest = hashlib.sha256(data).hexdigest()
+            record = find_report_hash(digest)
+            result = {"state": "match" if record else "nomatch", "sha256": digest, "record": record, "size": len(data)}
+    return render_template("verify.html", active_page="report", result=result, recent=get_recent_report_hashes())
+
+
 @views_bp.route("/report/download")
 @login_required
 def download_report():
@@ -263,15 +316,10 @@ def download_report():
         return "No scan available to generate report", 404
 
     from reports.report_builder import build_html_report
-    html_content = build_html_report(scan["id"])
+    html_bytes = build_html_report(scan["id"]).encode("utf-8")
     safe_host = re.sub(r"[^A-Za-z0-9_.-]", "_", scan["hostname"])[:40]  # no header injection
     filename = f"WinSentinel_Audit_Report_{safe_host}_Scan_{scan['id']}.html"
-
-    return Response(
-        html_content,
-        mimetype="text/html",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
+    return _serve_report(html_bytes, "text/html", filename, "html", scan["id"])
 
 
 def _csv_safe(value: Any) -> Any:
@@ -370,6 +418,50 @@ def frameworks():
     )
 
 
+@views_bp.route("/api/log-analytics")
+@login_required
+def api_log_analytics():
+    """Chart data for the Security-log analytics panel (top accounts / IPs, logon types, hourly failures)."""
+    scan, _ = resolve_active_scan(request.args.get("scan_id"))
+    metrics = get_scan_metrics(scan["id"]) if scan else {}
+
+    def pairs(d):
+        return [{"name": k, "count": v} for k, v in (d or {}).items()]
+
+    failed_types = metrics.get("failed_by_logon_type", {})
+    success_types = metrics.get("success_by_logon_type", {})
+    labels = sorted(set(failed_types) | set(success_types))
+    return jsonify({
+        "available": bool(metrics.get("total_events_analyzed")),
+        "totals": {k: metrics.get(k, 0) for k in
+                   ("total_events_analyzed", "failed_logon_count", "successful_logon_count", "privileged_logon_count")},
+        "top_accounts": pairs(metrics.get("top_failed_accounts")),
+        "top_ips": pairs(metrics.get("top_failed_ips")),
+        "logon_types": [{"name": n, "failed": failed_types.get(n, 0), "success": success_types.get(n, 0)} for n in labels],
+        "hourly": pairs(metrics.get("hourly_failures")),
+    })
+
+
+@views_bp.route("/api/live/status")
+@login_required
+def api_live_status():
+    """
+    Live-monitor status plus any live alerts newer than `since_id` (polled by the browser every ~20s).
+    """
+    since_id = validate_scan_id(request.args.get("since_id")) or 0
+    alerts = get_live_alerts(since_id=since_id, limit=20)
+    return jsonify({
+        "monitor": monitor_status(),
+        "elevated": is_elevated(),
+        "alerts": [
+            {"id": a["id"], "type": a["alert_type"], "severity": a["severity"], "account": a["account"],
+             "source_ip": a["source_ip"], "count": a["count"], "details": a["details"], "timestamp": a["timestamp"]}
+            for a in alerts
+        ],
+        "max_id": max([a["id"] for a in alerts], default=since_id),
+    })
+
+
 @views_bp.route("/api/search")
 @login_required
 def api_search():
@@ -395,11 +487,8 @@ def download_report_pdf():
     from reports.pdf_report import build_pdf_report
     pdf = build_pdf_report(scan["id"])
     safe_host = re.sub(r"[^A-Za-z0-9_.-]", "_", scan["hostname"])[:40]
-    return Response(
-        pdf,
-        mimetype="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=WinSentinel_Audit_Report_{safe_host}_Scan_{scan['id']}.pdf"},
-    )
+    filename = f"WinSentinel_Audit_Report_{safe_host}_Scan_{scan['id']}.pdf"
+    return _serve_report(pdf, "application/pdf", filename, "pdf", scan["id"])
 
 
 # -------------------------------------------------------------------------

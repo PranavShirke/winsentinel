@@ -66,6 +66,12 @@ Data that crosses boundary 4 is limited to the allowlisted product CPE name sent
 | **R**epudiation | Admin denies accepting a risk | Decisions record `updated_by` and `updated_at`, and appear in the HTML and PDF reports | Log not tamper-evident |
 | **D**enial of service | Auto-scan loop overloads host or NVD | Disabled by default; minimum 15-minute interval; reuses the single-scan lock | None known |
 | **I**nformation disclosure | Command palette search leaks data | `/api/search` requires login, length-limited query, parameterised LIKE, returns titles only | None known |
+| **I**nformation disclosure | Alert text leaks to a third party through notifications | Webhook and email are opt-in (owner configures them in `.env`); only the alert title and a short summary are sent, never passwords or raw events; failures are logged and never block scans | The configured webhook or mail server sees the alert text |
+| **T**ampering | Attacker-controlled account name in an event injects commands into the desktop notification | Text reaches PowerShell only through environment variables, never the command line (`tests/test_realtime.py::test_desktop_text_goes_through_environment_not_command_line`) | None known |
+| **T**ampering | Uploaded file on `/report/verify` is malicious | File is only hashed in memory, never stored, parsed or executed; login and CSRF required; 20 MB cap | None known |
+| **T**ampering | Report edited after it was generated | SHA-256 recorded at download; `/report/verify` detects any change | The hash table sits in the same database an attacker with host access could edit |
+| **E**levation of privilege | Running elevated increases impact of a bug | Elevation is optional and only widens read access; the app never writes to the system; launcher asks for UAC consent explicitly | A flaw in the elevated web app would run with admin rights, so keep it bound to 127.0.0.1 |
+| **I**nformation disclosure | Fix-command text executed by mistake or tampered with | Commands are static text from `risk/fixes.py`; product names are character-filtered; the UI states they are never run automatically | User runs a command without reading it |
 | **E**levation of privilege | Reaching dashboard routes unauthenticated | `@login_required` on every data route and API; test suite asserts each protected path redirects to login | Single-admin model: no roles |
 
 ### 3.2 Scan worker to Windows host (boundary 3)
@@ -108,6 +114,9 @@ Data that crosses boundary 4 is limited to the allowlisted product CPE name sent
 | SQL injection and script tags in query parameters | `test_findings_filters_and_bad_params` |
 | Spreadsheet formula injection through the CSV export | `test_csv_export_neutralises_formulas` |
 | Header injection through the hostname in the download name | `test_report_download_filename_is_sanitised` |
+| Duplicate or replayed live alerts | `test_burst_raises_one_alert_and_notifies_once` |
+| Notification channel failure breaks monitoring | `test_channels_and_failures_are_isolated` |
+| Tampered report passes verification | `test_report_download_records_hash_and_verify_matches` |
 | Forge or malformed risk-register decisions | `test_register_requires_csrf`, `test_register_validation` |
 | Hide a finding without a reason | `test_register_validation` (justification required) |
 | Inline script or external resource slipping into a page | `test_login_success_and_every_page_renders`, `test_no_external_urls_in_pages` |

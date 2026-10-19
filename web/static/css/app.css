@@ -684,3 +684,43 @@ select.compact { width: auto; min-height: 34px; padding-top: 4px; padding-bottom
   .toolbar .result-count { margin-left: 0; }
   .search-trigger .label { display: none; }
 }
+
+/* ==========================================================================
+   Elevation banner, live monitor, analytics, fix commands, verify page
+   ========================================================================== */
+.banner { display: flex; gap: 14px; align-items: flex-start; padding: 12px 16px; margin-bottom: 20px; border: 1px solid var(--sev-medium); border-left-width: 4px; border-radius: var(--radius); background: rgba(245, 197, 66, 0.07); font-size: 0.9rem; }
+.banner .icon { color: var(--sev-medium); margin-top: 2px; }
+.banner-body { flex: 1; color: var(--text-dim); }
+.banner-body strong { color: var(--text); }
+.banner-body code { font-size: 0.82em; }
+.banner-close { background: none; border: 0; color: var(--text-faint); cursor: pointer; font-size: 1.2rem; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+.banner-close:hover { color: var(--text); background: var(--ink-800); }
+
+.live-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--ink-800); color: var(--text-dim); font-family: var(--font-mono); font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.live-chip:hover { color: var(--text); border-color: var(--signal-line); }
+.live-chip .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
+.live-chip[data-state="on"] .pulse { background: var(--sev-low); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6); animation: ping 2s infinite; }
+.live-chip[data-state="error"] .pulse { background: var(--sev-medium); }
+.live-chip .count { display: none; padding: 0 6px; border-radius: 999px; background: var(--sev-critical); color: #fff; font-size: 0.68rem; }
+.live-chip.has-new .count { display: inline-block; }
+@keyframes ping { 70% { box-shadow: 0 0 0 7px rgba(74, 222, 128, 0); } 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); } }
+
+.monitor-status { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 0.86rem; color: var(--text-dim); margin-bottom: 14px; }
+.monitor-status strong { color: var(--text); font-family: var(--font-mono); font-weight: 500; }
+.analytics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 20px; }
+.analytics-grid .chart-container { height: 220px; }
+.analytics-wide { grid-column: 1 / -1; }
+.analytics-note { color: var(--text-faint); font-size: 0.84rem; padding: 8px 0; }
+
+.fixbox { margin-top: 16px; }
+.code { font-family: var(--font-mono); font-size: 0.8rem; background: var(--ink-950); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin: 0 0 8px; white-space: pre-wrap; word-break: break-all; color: var(--evidence-text); max-height: 200px; overflow: auto; }
+
+.verify-result { margin-top: 18px; padding: 14px 16px; border-radius: var(--radius); border: 1px solid var(--line); border-left-width: 4px; }
+.verify-match { border-left-color: var(--sev-low); background: rgba(74, 222, 128, 0.07); }
+.verify-nomatch { border-left-color: var(--sev-critical); background: rgba(255, 77, 94, 0.07); }
+.verify-error { border-left-color: var(--sev-medium); }
+.hash-line { margin-top: 8px; font-size: 0.76rem; color: var(--text-faint); word-break: break-all; }
+.hash-cell { font-size: 0.74rem; color: var(--text-dim); word-break: break-all; }
+
+@media (max-width: 1180px) { .analytics-grid { grid-template-columns: 1fr; } }
+.panel-body-pad { padding: 0 22px 14px; }

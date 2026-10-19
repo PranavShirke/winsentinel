@@ -67,6 +67,7 @@ def load_events_from_fixture(fixture_path: Optional[Path] = None) -> List[Dict[s
 def collect_security_events(
     days: int = 7,
     max_events: int = 5000,
+    since_minutes: Optional[int] = None,
 ) -> Tuple[bool, List[Dict[str, Any]], str]:
     """
     Query the Windows Security event log for authentication and privilege events.
@@ -74,6 +75,7 @@ def collect_security_events(
     Args:
         days: Number of days in the past to query.
         max_events: Maximum number of events to extract.
+        since_minutes: If set, query only the last N minutes (used by the live monitor) instead of `days`.
 
     Returns:
         Tuple[bool, List[Dict[str, Any]], str]: (success, list_of_events, error_message).
@@ -84,6 +86,8 @@ def collect_security_events(
     # Build PowerShell script with XML parsing to extract structured event data
     days = int(days)
     max_events = int(max_events)
+    # Integers only are interpolated into the script, so no input can inject PowerShell
+    start_expr = f"(Get-Date).AddMinutes(-{int(since_minutes)})" if since_minutes else f"(Get-Date).AddDays(-{days})"
     # Two queries: attack/audit events are rare and always fetched in full, while the
     # very noisy 4624/4672 logon events are capped so they cannot push 4625s out of the result.
     ps_script = f"""
@@ -96,7 +100,7 @@ try {{
         [Console]::Error.WriteLine('Cannot read the Security log (access denied or log empty). Run as Administrator or join Event Log Readers.')
         exit 1
     }}
-    $startDate = (Get-Date).AddDays(-{days})
+    $startDate = {start_expr}
     $rawEvents = @()
     foreach ($q in @(@{{ids = @(4625, 4720, 4740, 4732); max = {max_events}}}, @{{ids = @(4624, 4672); max = {max_events // 2}}})) {{
         try {{
@@ -116,6 +120,7 @@ try {{
             if ($d.Name) {{ $data[$d.Name] = $d.'#text' }}
         }}
         $results += [PSCustomObject]@{{
+            record_id          = [int64]$ev.RecordId
             id                 = [int]$ev.Id
             time_created       = $ev.TimeCreated.ToString('o')
             target_user_name   = $data['TargetUserName']

@@ -18,7 +18,7 @@ WinSentinel is one micro-project covering three subjects. All checks run live ag
 |---|---|---|
 | Module 3: risk assessment (NIST SP 800-30) | Likelihood x impact (1-25), severity bands, posture score formula | `risk/scoring.py` |
 | Module 4: access control and accountability | Admin and Guest audit; dashboard login with lockout and audit log | `web/auth.py` |
-| Module 5: incident management | Brute-force, possible-compromise, new-account, lockout and privileged-group alerts | `analysis/bruteforce.py` |
+| Module 5: incident management | Brute-force, possible-compromise, new-account, lockout and privileged-group alerts; real-time detection with notifications; log analytics (targets, sources, logon types, timeline) | `analysis/bruteforce.py`, `web/monitor.py`, `web/notifier.py` |
 | Module 6: audits in a Windows environment | Firewall, Defender, SMB, RDP/NLA, UAC, BitLocker, Secure Boot, patch level, credential-theft protections, shares, persistence; scan history and comparison for drift | `collectors/config_audit.py`, `collectors/extra_checks.py`, `/compare` |
 | Module 3: risk assessment (treatment) | Risk register: accept, mitigate (in progress) or reject (false positive) with justification, plus adjusted score | `/findings`, `db/database.py` |
 | Module 5: incident management (classification) | Alerts tagged with MITRE ATT&CK techniques; CIS Controls v8 coverage view | `risk/frameworks.py`, `/frameworks` |
@@ -28,6 +28,7 @@ WinSentinel is one micro-project covering three subjects. All checks run live ag
 | Syllabus area | What WinSentinel does | Where |
 |---|---|---|
 | Module 3: security headers, input validation | CSP, X-Frame-Options, nosniff, Referrer/Permissions-Policy; allow-list validation | `web/security.py` |
-| Module 4: secure SDLC | Written process with verification and release checklist | `docs/secure_sdlc.md` |
+| Module 4: secure SDLC | Written process with verification and release checklist; CI pipeline with automated tests and dependency audit | `docs/secure_sdlc.md`, `.github/workflows/ci.yml` |
+| Module 6: integrity and non-repudiation | SHA-256 fingerprints of issued reports and a verification page | `/report/verify` |
 | Module 6: threat modelling | STRIDE analysis with data-flow diagram and abuse cases | `docs/threat_model.md` |
 | Secure coding | Parameterised SQL, no `shell=True`, scrypt, CSRF, no hardcoded secrets | whole code base |
