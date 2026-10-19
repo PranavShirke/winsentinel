@@ -1,0 +1,12 @@
+# WinSentinel - Windows Security Audit, Log Analysis and Risk Scoring Framework
+# Python 3.10+ dependencies
+
+flask>=3.0.0
+flask-wtf>=1.2.0
+psutil>=5.9.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+werkzeug>=3.0.0
+pywin32>=306; sys_platform == 'win32'
+pytest>=8.0.0
+reportlab>=4.0.0

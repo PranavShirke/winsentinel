@@ -1,0 +1,99 @@
+{% extends "layout.html" %}
+
+{% block title %}Report Preview{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Compliance & Risk Audit Report</h1>
+    <p class="page-subtitle">Exportable single-file standalone HTML compliance report with print-to-PDF stylesheet</p>
+  </div>
+  {% if scan %}
+    <div>
+      <a href="{{ url_for('views.download_report', scan_id=scan.id) }}" class="btn btn-primary" download>
+        Download HTML report
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+{% if not scan %}
+  <div class="panel empty-state">
+    <h3>No Scan Selected for Report Generation</h3>
+    <p>Please run an audit scan or select a completed scan from Scan History.</p>
+  </div>
+{% else %}
+  <!-- Report Metadata Card -->
+  <div class="panel">
+    <div class="panel-title">
+      <span>Report Summary: Scan #{{ scan.id }}</span>
+      <span class="badge {% if (scan.posture_score or 0) >= 80 %}badge-low{% elif (scan.posture_score or 0) >= 60 %}badge-medium{% elif (scan.posture_score or 0) >= 40 %}badge-high{% else %}badge-critical{% endif %}">
+        Posture Score: {{ scan.posture_score if scan.posture_score is not none else 'N/A' }} / 100
+      </span>
+    </div>
+
+    <div class="cards-grid">
+      <div class="card">
+        <div class="card-label">Target Hostname</div>
+        <div class="card-value">{{ scan.hostname }}</div>
+        <div class="card-subtext">Local Windows Endpoint</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Audit Started</div>
+        <div class="card-value text-muted-sm">{{ scan.started_at[:19] }}</div>
+        <div class="card-subtext">Completed: {{ scan.finished_at[:19] if scan.finished_at else 'In progress' }}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Failed Findings</div>
+        <div class="card-value">{{ summary.failed_findings }}</div>
+        <div class="card-subtext">Requiring remediation</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Security Incidents</div>
+        <div class="card-value">{{ summary.active_alerts }}</div>
+        <div class="card-subtext">Detected in Security Log</div>
+      </div>
+    </div>
+
+    <!-- Report Sections Outline -->
+    <div class="mt-16">
+      <div class="panel-title">Included Report Sections</div>
+      <ul class="report-section-list">
+        <li class="report-section-item">
+          <strong>1. Cover Page & Executive Summary:</strong> Hostname, audit timestamp, overall posture score ring, finding statistics.
+        </li>
+        <li class="report-section-item">
+          <strong>2. Scope & Legal Ethics Statement:</strong> Explicit authorization documentation and local loopback isolation verification.
+        </li>
+        <li class="report-section-item">
+          <strong>3. NIST SP 800-30 Methodology:</strong> Likelihood x Impact matrix, severity bands, and mathematical posture deduction formula.
+        </li>
+        <li class="report-section-item">
+          <strong>4. Comprehensive Findings & Remediation:</strong> Full table of failed findings with evidence and prescriptive CLI commands.
+        </li>
+        <li class="report-section-item">
+          <strong>5. Event Log Attack Alerts:</strong> Correlated brute-force patterns and anomalous privilege modifications.
+        </li>
+        <li class="report-section-item">
+          <strong>6. Software Vulnerability Inventory:</strong> Allowlisted applications cross-referenced with NVD CVEs and CVSS base scores.
+        </li>
+        <li class="report-section-item">
+          <strong>7. Limitations:</strong> Transparent false-positive and CPE registry keyword mapping limitations.
+        </li>
+        <li class="report-section-item">
+          <strong>8. Appendix of Passed Checks:</strong> Full record of compliant security controls and hardening baselines.
+        </li>
+      </ul>
+    </div>
+
+    <div class="mt-16">
+      <a href="{{ url_for('views.download_report', scan_id=scan.id) }}" class="btn btn-primary" download>
+        Download Standalone HTML Report
+      </a>
+      <span class="text-muted-sm ml-12">
+        File is self-contained with inlined CSS and @media print rules for clean A4 printing.
+      </span>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

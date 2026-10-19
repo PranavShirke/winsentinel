@@ -1,0 +1,10 @@
+Force user logoff how long after time expires?:       Never
+Minimum password age (days):                          1
+Maximum password age (days):                          60
+Minimum password length:                              14
+Length of password history maintained:                10
+Lockout threshold:                                    5
+Lockout duration (minutes):                           15
+Lockout observation window (minutes):                 15
+Computer role:                                        WORKSTATION
+The command completed successfully.

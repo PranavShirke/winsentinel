@@ -1,0 +1,38 @@
+# Environment & Secrets
+.env
+*.env
+
+# SQLite Databases
+*.db
+*.sqlite
+*.sqlite3
+winsentinel.db
+
+# Logs
+*.log
+winsentinel.log
+
+# Python cache & build files
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual Environments
+venv/
+.venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+
+# Report generated files
+reports/generated/

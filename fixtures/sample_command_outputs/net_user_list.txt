@@ -1,0 +1,6 @@
+User accounts for \\TEST-WIN-WORKSTATION
+
+-------------------------------------------------------------------------------
+Administrator            Guest                    Pranav
+WDAGUtilityAccount       DevUser                  
+The command completed successfully.

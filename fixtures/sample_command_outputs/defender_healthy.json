@@ -1,0 +1,10 @@
+{
+    "AntivirusEnabled": true,
+    "AMServiceEnabled": true,
+    "RealTimeProtectionEnabled": true,
+    "AntivirusSignatureAge": 0,
+    "AntivirusSignatureLastUpdated": "\/Date(1792321624000)\/",
+    "BehaviorMonitorEnabled": true,
+    "IoavProtectionEnabled": true,
+    "OnAccessProtectionEnabled": true
+}

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}WinSentinel{% endblock %} - Windows Security Audit Framework</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Fixed Sidebar (220px) -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-text">
+          <span>WinSentinel</span>
+          <span class="logo-badge">v1.0</span>
+        </div>
+      </div>
+      <ul class="nav-links">
+        <li class="nav-item">
+          <a href="{{ url_for('views.dashboard') }}" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">
+            Dashboard
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="{{ url_for('views.findings') }}" class="nav-link {% if active_page == 'findings' %}active{% endif %}">
+            Findings
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="{{ url_for('views.alerts') }}" class="nav-link {% if active_page == 'alerts' %}active{% endif %}">
+            Alerts
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="{{ url_for('views.software') }}" class="nav-link {% if active_page == 'software' %}active{% endif %}">
+            Software and CVEs
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="{{ url_for('views.history') }}" class="nav-link {% if active_page == 'history' %}active{% endif %}">
+            Scan History
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="{{ url_for('views.report_preview') }}" class="nav-link {% if active_page == 'report' %}active{% endif %}">
+            Report
+          </a>
+        </li>
+        <li class="nav-item nav-item-logout">
+          <a href="{{ url_for('auth.logout') }}" class="nav-link">
+            Logout
+          </a>
+        </li>
+      </ul>
+      <div class="sidebar-footer">
+        <div>Host: <strong>{{ current_hostname }}</strong></div>
+        <div>User: {{ session.get('username', 'Admin') }}</div>
+      </div>
+    </aside>
+
+    <!-- Main Content Wrapper -->
+    <div class="main-wrapper">
+      <!-- Top Bar -->
+      <header class="topbar">
+        <div class="topbar-info">
+          <div class="info-item">
+            Audited Host: <strong>{{ current_hostname }}</strong>
+          </div>
+          <div class="info-item">
+            Last Scan: <strong>{{ last_scan_time or 'No scans performed yet' }}</strong>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button id="btn-start-scan" class="btn btn-primary">
+            Run new scan
+          </button>
+        </div>
+      </header>
+
+      <!-- Content Area -->
+      <main class="content-area">
+        <!-- Background Scan Progress Banner -->
+        <div id="progress-banner" class="progress-banner">
+          <div class="progress-banner-header">
+            <strong class="text-accent">Audit Scan in Progress</strong>
+            <span id="progress-percent" class="text-bold">0%</span>
+          </div>
+          <div id="progress-step" class="progress-step-text">
+            Initializing scan...
+          </div>
+          <div class="progress-bar-bg">
+            <div id="progress-bar-fill" class="progress-bar-fill"></div>
+          </div>
+        </div>
+
+        <!-- Flash Notifications -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-messages">
+              {% for category, message in messages %}
+                <div class="alert-flash alert-flash-{{ category }}">
+                  {{ message }}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+      </main>
+
+      <!-- Footer with Legal & Scope Notice -->
+      <footer class="app-footer">
+        <strong>Legal & Ethical Scope:</strong> WinSentinel audits ONLY this local machine (127.0.0.1).
+        Read-only security posture analysis. No remote scanning, exploitation, automated remediation, or Active Directory modifications.
+      </footer>
+    </div>
+  </div>
+
+  <!-- Vendored Local Chart.js & Application JS (Strictly zero external calls) -->
+  <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

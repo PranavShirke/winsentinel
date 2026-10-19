@@ -1,0 +1,68 @@
+{% extends "layout.html" %}
+
+{% block title %}Security Alerts{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Correlated Security Alerts</h1>
+    <p class="page-subtitle">Windows Security log incident detections, brute-force patterns, and credential abuse</p>
+  </div>
+  {% if scan %}
+    <span class="badge badge-info">Scan #{{ scan.id }} &bull; {{ alerts|length }} Incident(s)</span>
+  {% endif %}
+</div>
+
+{% if not scan %}
+  <div class="panel empty-state">
+    <h3>No Scan Selected</h3>
+    <p>Please execute a scan or select a previous scan from Scan History.</p>
+  </div>
+{% else %}
+  <div class="panel">
+    <div class="panel-title">
+      <span>Detected Incidents & Threat Anomalies</span>
+      <span class="text-muted-sm">Analysis Horizon: Last 7 Days</span>
+    </div>
+
+    {% if not alerts %}
+      <div class="empty-state">
+        <p>No brute-force logon patterns, account lockouts, or unauthorized modifications were detected in this scan.</p>
+      </div>
+    {% else %}
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Incident Type</th>
+              <th>Target Account</th>
+              <th>Source IP</th>
+              <th>Attempts</th>
+              <th>Severity</th>
+              <th>Incident Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in alerts %}
+              <tr class="{% if a.alert_type == 'Possible Compromise' %}highlight-compromise{% elif a.alert_type == 'Brute Force Attack' %}highlight-bruteforce{% endif %}">
+                <td class="text-muted-sm">{{ a.timestamp[:19] }}</td>
+                <td>
+                  <strong>{{ a.alert_type }}</strong>
+                </td>
+                <td><code>{{ a.account }}</code></td>
+                <td><code>{{ a.source_ip }}</code></td>
+                <td><strong>{{ a.count }}</strong></td>
+                <td>
+                  <span class="badge badge-{{ a.severity.lower() }}">{{ a.severity }}</span>
+                </td>
+                <td class="text-muted-sm">{{ a.details }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

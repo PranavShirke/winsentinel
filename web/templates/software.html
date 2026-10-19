@@ -1,0 +1,100 @@
+{% extends "layout.html" %}
+
+{% block title %}Software & CVEs{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Installed Software & Vulnerability Inventory</h1>
+    <p class="page-subtitle">Windows Registry package inventory cross-referenced with National Vulnerability Database (NVD)</p>
+  </div>
+  {% if scan %}
+    <span class="badge badge-info">Scan #{{ scan.id }} &bull; {{ software_list|length }} Packages &bull; {{ cve_findings|length }} Flagged</span>
+  {% endif %}
+</div>
+
+{% if not scan %}
+  <div class="panel empty-state">
+    <h3>No Scan Selected</h3>
+    <p>Please execute a scan or select a previous scan from Scan History.</p>
+  </div>
+{% else %}
+  <!-- Allowlisted Software Vulnerabilities (CVE Matches) -->
+  <div class="panel">
+    <div class="panel-title">
+      <span>Allowlisted Applications & Known CVEs</span>
+      <span class="text-muted-sm">Audited against NVD API v2</span>
+    </div>
+
+    {% if not cve_findings %}
+      <div class="empty-state">
+        <p>No critical vulnerabilities were flagged for allowlisted software in this scan.</p>
+      </div>
+    {% else %}
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Severity</th>
+              <th>Vulnerability Title</th>
+              <th>Risk Score</th>
+              <th>Technical Details & NVD Reference</th>
+              <th>Recommended Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in cve_findings %}
+              <tr>
+                <td>
+                  <span class="badge badge-{{ f.severity.lower() }}">{{ f.severity }}</span>
+                </td>
+                <td><strong>{{ f.title }}</strong></td>
+                <td>
+                  <strong>{{ f.risk_score }}</strong> <span class="text-muted-sm">(L:{{ f.likelihood }} &times; I:{{ f.impact }})</span>
+                </td>
+                <td class="text-muted-sm">{{ f.evidence }}</td>
+                <td>{{ f.remediation }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Full Software Inventory Table -->
+  <div class="panel">
+    <div class="panel-title">
+      <span>Complete Windows Registry Software Inventory</span>
+      <span class="text-muted-sm">{{ software_list|length }} Total Applications</span>
+    </div>
+
+    {% if not software_list %}
+      <div class="empty-state">
+        <p>No installed software entries discovered in registry.</p>
+      </div>
+    {% else %}
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Application Name</th>
+              <th>Version</th>
+              <th>Publisher</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in software_list %}
+              <tr>
+                <td><strong>{{ s.name }}</strong></td>
+                <td><code>{{ s.version }}</code></td>
+                <td class="text-muted-sm">{{ s.publisher }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

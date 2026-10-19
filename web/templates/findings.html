@@ -1,0 +1,151 @@
+{% extends "layout.html" %}
+
+{% block title %}Findings{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Audit Findings</h1>
+    <p class="page-subtitle">Security check evaluations across Configuration, Event Logs, and Software</p>
+  </div>
+  {% if scan %}
+    <span class="badge badge-info">Scan #{{ scan.id }} &bull; {{ findings|length }} check(s) listed</span>
+  {% endif %}
+</div>
+
+{% if not scan %}
+  <div class="panel empty-state">
+    <h3>No Scan Selected</h3>
+    <p>Please execute a scan or select a previous scan from Scan History.</p>
+  </div>
+{% else %}
+  <!-- Filter Bar -->
+  <form method="GET" action="{{ url_for('views.findings') }}" class="filter-bar">
+    {% if request.args.get('scan_id') %}
+      <input type="hidden" name="scan_id" value="{{ request.args.get('scan_id') }}">
+    {% endif %}
+
+    <div class="filter-group">
+      <label for="filter-severity">Severity:</label>
+      <select id="filter-severity" name="severity" class="input-control">
+        <option value="">All Severities</option>
+        {% for s in ['Critical', 'High', 'Medium', 'Low', 'Info', 'Error'] %}
+          <option value="{{ s }}" {% if selected_severity == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label for="filter-module">Module:</label>
+      <select id="filter-module" name="module" class="input-control">
+        <option value="">All Modules</option>
+        <option value="config" {% if selected_module == 'config' %}selected{% endif %}>Configuration</option>
+        <option value="logs" {% if selected_module == 'logs' %}selected{% endif %}>Event Logs</option>
+        <option value="software" {% if selected_module == 'software' %}selected{% endif %}>Software CVEs</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label for="filter-status">Status:</label>
+      <select id="filter-status" name="status" class="input-control">
+        <option value="">All Statuses</option>
+        <option value="fail" {% if selected_status == 'fail' %}selected{% endif %}>Fail</option>
+        <option value="pass" {% if selected_status == 'pass' %}selected{% endif %}>Pass</option>
+        <option value="error" {% if selected_status == 'error' %}selected{% endif %}>Error</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label for="filter-search">Search:</label>
+      <input
+        type="text"
+        id="filter-search"
+        name="search"
+        class="input-control"
+        placeholder="Filter by title or evidence..."
+        value="{{ selected_search or '' }}"
+      >
+    </div>
+
+    <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+    <a href="{{ url_for('views.findings', scan_id=scan.id) }}" class="btn btn-secondary btn-sm">Reset</a>
+  </form>
+
+  <!-- Findings Table -->
+  <div class="panel">
+    {% if not findings %}
+      <div class="empty-state">
+        <p>No findings matched the selected filter criteria.</p>
+      </div>
+    {% else %}
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Severity</th>
+              <th>Finding Title</th>
+              <th>Module</th>
+              <th>Risk Score</th>
+              <th>Status</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in findings %}
+              <tr
+                class="table-row-clickable"
+                tabindex="0"
+                data-target="detail-row-{{ f.id }}"
+                title="Click to view evidence and remediation"
+              >
+                <td>
+                  <span class="badge badge-{{ f.severity.lower() }}">{{ f.severity }}</span>
+                </td>
+                <td><strong>{{ f.title }}</strong></td>
+                <td>{{ f.module.upper() }}</td>
+                <td>
+                  {% if f.status == 'pass' %}
+                    <span class="text-muted-sm">Pass (0)</span>
+                  {% elif f.status == 'error' %}
+                    <span class="text-muted-sm">Error</span>
+                  {% else %}
+                    <strong>{{ f.risk_score }}</strong> <span class="text-muted-sm">(L:{{ f.likelihood }} &times; I:{{ f.impact }})</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if f.status == 'pass' %}
+                    <span class="badge badge-low">PASS</span>
+                  {% elif f.status == 'fail' %}
+                    <span class="badge badge-critical">FAIL</span>
+                  {% else %}
+                    <span class="badge badge-error">ERROR</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="text-accent text-muted-sm">&blacktriangledown; Expand</span>
+                </td>
+              </tr>
+
+              <!-- Expandable Evidence & Remediation Drawer -->
+              <tr id="detail-row-{{ f.id }}" class="detail-row">
+                <td colspan="6">
+                  <div>
+                    <div class="text-muted-sm text-bold">TECHNICAL EVIDENCE & COMMAND OUTPUT:</div>
+                    <div class="evidence-box">{{ f.evidence }}</div>
+                  </div>
+                  {% if f.remediation and f.status != 'pass' %}
+                    <div class="remediation-box">
+                      <strong>Recommended Remediation:</strong>
+                      <p>{{ f.remediation }}</p>
+                    </div>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

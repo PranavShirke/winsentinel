@@ -1,0 +1,147 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Security Posture Dashboard</h1>
+    <p class="page-subtitle">Windows audit metrics, incident alerts, and vulnerability posture</p>
+  </div>
+  {% if scan %}
+    <span class="badge badge-info">Scan #{{ scan.id }} &bull; {{ scan.started_at[:19] }}</span>
+  {% endif %}
+</div>
+
+{% if not scan %}
+  <!-- Empty State -->
+  <div class="panel empty-state">
+    <h3>No Security Scans Recorded</h3>
+    <p>Run your first automated security audit to evaluate password policies, event logs, and software CVEs.</p>
+    <div class="mt-16">
+      <button id="btn-empty-scan" class="btn btn-primary">
+        Run First Scan
+      </button>
+    </div>
+  </div>
+{% else %}
+  <!-- 4 Summary Cards Grid -->
+  <div class="cards-grid">
+    <!-- Card 1: Posture Score Ring -->
+    <div class="card score-card">
+      <div class="score-ring">
+        <svg width="76" height="76" viewBox="0 0 76 76">
+          <circle cx="38" cy="38" r="32" stroke="#263040" stroke-width="6" fill="none" />
+          <circle
+            cx="38"
+            cy="38"
+            r="32"
+            stroke="{% if scan.posture_score >= 80 %}#22c55e{% elif scan.posture_score >= 60 %}#eab308{% elif scan.posture_score >= 40 %}#f97316{% else %}#ef4444{% endif %}"
+            stroke-width="6"
+            stroke-dasharray="201"
+            stroke-dashoffset="{{ 201 - (201 * (scan.posture_score or 0) / 100) }}"
+            stroke-linecap="round"
+            fill="none"
+          />
+        </svg>
+        <span class="score-text">{{ scan.posture_score if scan.posture_score is not none else 'N/A' }}</span>
+      </div>
+      <div>
+        <div class="card-label">Posture Score</div>
+        <div class="card-subtext">Baseline 100 &bull; NIST SP 800-30</div>
+      </div>
+    </div>
+
+    <!-- Card 2: Total Failed Findings -->
+    <div class="card">
+      <div class="card-label">Failed Findings</div>
+      <div class="card-value">{{ summary.failed_findings }}</div>
+      <div class="card-subtext">Actionable security deficiencies</div>
+    </div>
+
+    <!-- Card 3: Active Incident Alerts -->
+    <div class="card">
+      <div class="card-label">Active Alerts</div>
+      <div class="card-value {% if summary.active_alerts > 0 %}text-accent{% endif %}">
+        {{ summary.active_alerts }}
+      </div>
+      <div class="card-subtext">Correlated event log detections</div>
+    </div>
+
+    <!-- Card 4: Vulnerable Software -->
+    <div class="card">
+      <div class="card-label">Vulnerable Software</div>
+      <div class="card-value">{{ summary.vulnerable_software }}</div>
+      <div class="card-subtext">Out of {{ summary.software_total }} inventoried apps</div>
+    </div>
+  </div>
+
+  <!-- Charts Grid (Loaded asynchronously via app.js) -->
+  <div class="charts-grid">
+    <!-- Chart A: Findings by Severity -->
+    <div class="chart-panel">
+      <div class="panel-title">Findings by Severity</div>
+      <div class="chart-container">
+        <canvas id="severityChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Chart B: Findings by Module -->
+    <div class="chart-panel">
+      <div class="panel-title">Failed Checks by Module</div>
+      <div class="chart-container">
+        <canvas id="moduleChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Chart C: Failed Logons Timeline -->
+    <div class="chart-panel">
+      <div class="panel-title">Failed Logons (Event 4625)</div>
+      <div class="chart-container">
+        <canvas id="logonChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top 5 Risks Panel -->
+  <div class="panel">
+    <div class="panel-title">
+      <span>Top Security Risks</span>
+      <a href="{{ url_for('views.findings') }}" class="btn btn-secondary btn-sm">View all findings</a>
+    </div>
+
+    {% if not top_risks %}
+      <div class="empty-state">
+        <p>No failed findings identified in this audit.</p>
+      </div>
+    {% else %}
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Severity</th>
+              <th>Finding Title</th>
+              <th>Module</th>
+              <th>Risk Score</th>
+              <th>Remediation Summary</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in top_risks %}
+              <tr>
+                <td>
+                  <span class="badge badge-{{ f.severity.lower() }}">{{ f.severity }}</span>
+                </td>
+                <td><strong>{{ f.title }}</strong></td>
+                <td>{{ f.module.upper() }}</td>
+                <td><strong>{{ f.risk_score }}</strong> <span class="text-muted-sm">(L:{{ f.likelihood }} &times; I:{{ f.impact }})</span></td>
+                <td>{{ f.remediation[:80] }}...</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

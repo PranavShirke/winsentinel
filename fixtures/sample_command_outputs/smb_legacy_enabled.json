@@ -1,0 +1,4 @@
+{
+    "EnableSMB1Protocol": true,
+    "EnableSMB2Protocol": true
+}

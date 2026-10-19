@@ -1,0 +1,81 @@
+{% extends "layout.html" %}
+
+{% block title %}Scan History{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Audit History & Trends</h1>
+    <p class="page-subtitle">Track security posture scores and vulnerability trends over time</p>
+  </div>
+</div>
+
+{% if not all_scans %}
+  <div class="panel empty-state">
+    <h3>No Historical Scans Found</h3>
+    <p>Run your first automated security audit to begin tracking security posture history.</p>
+  </div>
+{% else %}
+  <!-- Posture Score Trend Chart Panel -->
+  <div class="panel">
+    <div class="panel-title">
+      <span>Security Posture Trend Over Time</span>
+      <span class="text-muted-sm">Score Range: 0 - 100</span>
+    </div>
+    <div class="history-chart-container">
+      <canvas id="historyTrendChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Scan History Table -->
+  <div class="panel">
+    <div class="panel-title">
+      <span>Historical Audit Sessions</span>
+      <span class="text-muted-sm">{{ all_scans|length }} Total Scans</span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Scan ID</th>
+            <th>Date & Time</th>
+            <th>Hostname</th>
+            <th>Posture Score</th>
+            <th>Failed Findings</th>
+            <th>Incidents / Alerts</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in all_scans %}
+            <tr>
+              <td><strong>#{{ s.id }}</strong></td>
+              <td class="text-muted-sm">{{ s.started_at[:19] }}</td>
+              <td><code>{{ s.hostname }}</code></td>
+              <td>
+                <span class="badge {% if (s.posture_score or 0) >= 80 %}badge-low{% elif (s.posture_score or 0) >= 60 %}badge-medium{% elif (s.posture_score or 0) >= 40 %}badge-high{% else %}badge-critical{% endif %}">
+                  {{ s.posture_score if s.posture_score is not none else 'N/A' }} / 100
+                </span>
+              </td>
+              <td>{{ s.failed_count }}</td>
+              <td>{{ s.alert_count }}</td>
+              <td>
+                <span class="badge {% if s.status == 'completed' %}badge-low{% elif s.status == 'running' %}badge-high{% else %}badge-critical{% endif %}">
+                  {{ s.status|upper }}
+                </span>
+              </td>
+              <td>
+                <a href="{{ url_for('views.dashboard', scan_id=s.id) }}" class="btn btn-secondary btn-sm">
+                  View Dashboard
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}
