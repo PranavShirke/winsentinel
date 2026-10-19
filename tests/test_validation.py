@@ -103,7 +103,7 @@ class TestWebSecurityAndValidation(unittest.TestCase):
 
     def test_unauthenticated_redirect(self):
         """Verify protected views require authentication."""
-        resp = self.client.get("/")
+        resp = self.client.get("/dashboard")
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/login", resp.headers["Location"])
 

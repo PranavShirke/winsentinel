@@ -219,9 +219,13 @@ function initDashboardCharts() {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-              legend: { position: "right", labels: { boxWidth: 12, padding: 12 } },
+              legend: {
+                position: "bottom",
+                labels: { boxWidth: 10, padding: 8, font: { size: 11 } },
+              },
             },
             cutout: "68%",
+            layout: { padding: 4 },
           },
         });
       }

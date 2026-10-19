@@ -86,6 +86,12 @@ def inject_global_template_context():
 # -------------------------------------------------------------------------
 
 @views_bp.route("/")
+def welcome():
+    """Render the public product landing page before administrator login."""
+    return render_template("welcome.html")
+
+
+@views_bp.route("/dashboard")
 @login_required
 def dashboard():
     """Render the primary SOC security dashboard."""

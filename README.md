@@ -222,7 +222,7 @@ python main.py demo
 python main.py serve
 ```
 
-Open your browser at **[http://127.0.0.1:5000](http://127.0.0.1:5000)** and log in with the password you set.
+Open your browser at **[http://127.0.0.1:5000](http://127.0.0.1:5000)** to view the product landing page, then select **Administrator sign in** and log in with the password you set.
 
 ---
 
