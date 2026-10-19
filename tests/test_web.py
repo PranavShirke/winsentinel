@@ -273,3 +273,12 @@ class VersionMatchingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EntrypointTests(unittest.TestCase):
+    """The CLI entrypoint is not imported by other tests, so make sure it at least compiles and loads."""
+
+    def test_main_module_imports(self):
+        import importlib
+        main = importlib.import_module("main")
+        self.assertTrue(callable(main.main))

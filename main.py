@@ -195,8 +195,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
     if cfg.SECRET_KEY_IS_EPHEMERAL:
         print(
             "[!] SECRET_KEY is not set in .env: using a random key for this run "
-            "(you will be logged out on restart). Generate one with:
-"
+            "(you will be logged out on restart). Generate one with:\n"
             "    python -c \"import secrets; print(secrets.token_hex(32))\"",
             file=sys.stderr,
         )
