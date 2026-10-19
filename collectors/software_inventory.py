@@ -47,6 +47,31 @@ def clean_version_string(ver_str: str) -> str:
     return cleaned if cleaned else "Unknown"
 
 
+def resolve_version(display_name: str, registry_version: str) -> str:
+    """
+    Pick the most precise version string available for an installed program.
+
+    Some installers store a coarse DisplayVersion (Python writes "3.14-64" for Python 3.14.7) but
+    put the full version in the display name. Using the coarse value would make CVE range
+    checks wrong, so the display name wins when it carries more dotted components.
+
+    Args:
+        display_name: Registry DisplayName, e.g. "Python 3.14.7 (64-bit)".
+        registry_version: Cleaned DisplayVersion, or "Unknown".
+
+    Returns:
+        str: The more precise version string.
+    """
+    def components(text: str) -> List[str]:
+        m = re.search(r"\d+(?:\.\d+)*", text or "")
+        return m.group(0).split(".") if m else []
+
+    in_name = re.search(r"\d+(?:\.\d+){2,}", display_name or "")
+    if in_name and len(components(in_name.group(0))) > len(components(registry_version)):
+        return in_name.group(0)
+    return registry_version
+
+
 def is_system_component(key_handle: Any) -> bool:
     """
     Check if a registry subkey is marked as a Windows internal component.
@@ -124,6 +149,7 @@ def enumerate_registry_keys(
                             display_version = clean_version_string(str(val))
                         except Exception:
                             pass
+                        display_version = resolve_version(display_name, display_version)
 
                         publisher = "Unknown"
                         try:

@@ -19,6 +19,7 @@ from collectors.nvd_client import (
     map_product_to_likelihood,
     calculate_cve_severity,
     NvdClient,
+    CACHE_KEY_SUFFIX,
     audit_software_vulnerabilities,
 )
 
@@ -97,7 +98,7 @@ class TestSoftwareAndNvd(unittest.TestCase):
     def test_nvd_cache_hit_avoids_network(self):
         """Verify that cached CVEs return immediately without outbound HTTP calls."""
         insert_cached_cve(
-            product="7-zip",
+            product="7-zip" + CACHE_KEY_SUFFIX,
             version="23.01",
             cve_id="CVE-2023-TEST",
             cvss_score=8.5,
@@ -113,6 +114,54 @@ class TestSoftwareAndNvd(unittest.TestCase):
             self.assertEqual(len(cves), 1)
             self.assertEqual(cves[0]["cve_id"], "CVE-2023-TEST")
             self.assertIn("cache", msg.lower())
+            mock_get.assert_not_called()
+
+    @staticmethod
+    def _nvd_payload():
+        """Minimal NVD v2 response: one CVE fixed in 24.07, one for a look-alike product."""
+        def cve(cve_id, criteria, **bounds):
+            return {"cve": {"id": cve_id, "descriptions": [{"lang": "en", "value": cve_id + " desc"}],
+                            "metrics": {"cvssMetricV31": [{"cvssData": {"baseScore": 8.8}}]},
+                            "configurations": [{"nodes": [{"cpeMatch": [dict({"vulnerable": True, "criteria": criteria}, **bounds)]}]}]}}
+        return {"totalResults": 3, "resultsPerPage": 2000, "vulnerabilities": [
+            cve("CVE-OLD", "cpe:2.3:a:7-zip:7-zip:*:*:*:*:*:*:*:*", versionEndExcluding="24.07"),
+            cve("CVE-NEW", "cpe:2.3:a:7-zip:7-zip:*:*:*:*:*:*:*:*", versionEndExcluding="99.0"),
+            cve("CVE-OTHER", "cpe:2.3:a:other:7-zip-clone:*:*:*:*:*:*:*:*"),
+        ]}
+
+    def test_live_query_filters_by_version_and_product_then_caches(self):
+        """A mocked NVD response: only CVEs affecting the installed version of the exact product survive."""
+        from unittest.mock import MagicMock
+        resp = MagicMock(status_code=200)
+        resp.json.return_value = self._nvd_payload()
+        client = NvdClient(delay_seconds=0.001)
+        with patch("requests.get", return_value=resp) as mock_get:
+            ok, cves, _ = client.query_cves("7-zip", "24.09", db_path=self.db_path)
+            self.assertTrue(ok)
+            self.assertEqual([c["cve_id"] for c in cves], ["CVE-NEW"])  # CVE-OLD fixed before 24.09
+            self.assertEqual(mock_get.call_args.kwargs["params"]["virtualMatchString"], "cpe:2.3:a:7-zip:7-zip")
+            # A second lookup is served from the cache without another HTTP call
+            ok2, cves2, msg2 = client.query_cves("7-zip", "24.09", db_path=self.db_path)
+            self.assertEqual([c["cve_id"] for c in cves2], ["CVE-NEW"])
+            self.assertEqual(mock_get.call_count, 1)
+            self.assertIn("cache", msg2.lower())
+
+    def test_zero_cves_is_cached_too(self):
+        """"No CVE affects this version" must also be cached so re-scans do not hammer the NVD."""
+        from unittest.mock import MagicMock
+        resp = MagicMock(status_code=200)
+        resp.json.return_value = {"totalResults": 0, "resultsPerPage": 2000, "vulnerabilities": []}
+        client = NvdClient(delay_seconds=0.001)
+        with patch("requests.get", return_value=resp) as mock_get:
+            self.assertEqual(client.query_cves("7-zip", "24.09", db_path=self.db_path)[1], [])
+            self.assertEqual(client.query_cves("7-zip", "24.09", db_path=self.db_path)[1], [])
+            self.assertEqual(mock_get.call_count, 1)
+
+    def test_unknown_version_or_unmapped_product_is_skipped_not_guessed(self):
+        client = NvdClient(delay_seconds=0.001)
+        with patch("requests.get") as mock_get:
+            self.assertFalse(client.query_cves("7-zip", "Unknown", db_path=self.db_path)[0])
+            self.assertFalse(client.query_cves("not-in-allowlist", "1.0", db_path=self.db_path)[0])
             mock_get.assert_not_called()
 
     def test_offline_mode_graceful_handling(self):

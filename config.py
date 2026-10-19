@@ -66,8 +66,8 @@ class Config:
     # Rate limits: ~5 req/30s unauthenticated (6.0s delay), ~50 req/30s with API key (0.7s delay)
     NVD_REQUEST_DELAY_SECONDS = 0.7 if NVD_API_KEY else 6.0
     NVD_TIMEOUT_SECONDS = 15
-    # Maximum CVEs pulled per product keyword before version filtering
-    NVD_RESULTS_PER_PAGE = 60
+    # Pages of 2000 CVEs fetched per product before local version filtering
+    NVD_MAX_PAGES = 3  # up to 3 x 2000 CVEs per product
 
     # Software Inventory Allowlist (Only check well-known products against NVD)
     SOFTWARE_ALLOWLIST = [
@@ -83,6 +83,23 @@ class Config:
         "adobe acrobat",
         "adobe reader",
     ]
+
+    # Exact NVD CPE (vendor, product) pairs for each allowlisted keyword. Matching on exact CPE
+    # names (not substrings) prevents e.g. "nautilus-python" or legacy "edge" CVEs being
+    # attributed to Python or Chromium Edge.
+    CPE_PRODUCTS = {
+        "google chrome": [("google", "chrome")],
+        "mozilla firefox": [("mozilla", "firefox")],
+        "microsoft edge": [("microsoft", "edge_chromium")],
+        "7-zip": [("7-zip", "7-zip")],
+        "java": [("oracle", "jre"), ("oracle", "jdk")],
+        "python": [("python", "python")],
+        "vlc media player": [("videolan", "vlc_media_player")],
+        "notepad++": [("notepad-plus-plus", r"notepad\+\+")],
+        "winrar": [("rarlab", "winrar")],
+        "adobe acrobat": [("adobe", "acrobat_dc"), ("adobe", "acrobat")],
+        "adobe reader": [("adobe", "acrobat_reader_dc"), ("adobe", "acrobat_reader")],
+    }
 
     # Risky Listening Ports to Flag in Config Audit
     RISKY_PORTS = {

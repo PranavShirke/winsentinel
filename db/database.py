@@ -136,6 +136,9 @@ def init_db(db_path: Optional[str] = None) -> None:
         );
     """)
 
+    # Drop CVE results cached by older matching logic (keys without a "#" version suffix)
+    cursor.execute("DELETE FROM cve_cache WHERE product NOT LIKE '%#%';")
+
     # Create indexes for scan_id and cve_cache lookups
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_findings_scan_id ON findings(scan_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_scan_id ON alerts(scan_id);")

@@ -246,21 +246,32 @@ class VersionMatchingTests(unittest.TestCase):
 
     def test_range_bounds(self):
         cve = self._cve(versionEndExcluding="24.07")
-        self.assertTrue(version_is_affected(cve, "7-zip", "23.01"))
-        self.assertFalse(version_is_affected(cve, "7-zip", "24.07"))
-        self.assertFalse(version_is_affected(cve, "7-zip", "25.00"))
+        self.assertTrue(version_is_affected(cve, {"7-zip"}, "23.01"))
+        self.assertFalse(version_is_affected(cve, {"7-zip"}, "24.07"))
+        self.assertFalse(version_is_affected(cve, {"7-zip"}, "25.00"))
         start = self._cve(versionStartIncluding="9.0", versionEndIncluding="9.20")
-        self.assertTrue(version_is_affected(start, "7-zip", "9.20"))
-        self.assertFalse(version_is_affected(start, "7-zip", "9.21"))
-        self.assertFalse(version_is_affected(start, "7-zip", "8.9"))
+        self.assertTrue(version_is_affected(start, {"7-zip"}, "9.20"))
+        self.assertFalse(version_is_affected(start, {"7-zip"}, "9.21"))
+        self.assertFalse(version_is_affected(start, {"7-zip"}, "8.9"))
 
     def test_exact_version_and_unrelated_product(self):
         exact = {"configurations": [{"nodes": [{"cpeMatch": [{"vulnerable": True, "criteria": "cpe:2.3:a:igor_pavlov:7-zip:23.01:*:*:*:*:*:*:*"}]}]}]}
-        self.assertTrue(version_is_affected(exact, "7-zip", "23.01"))
-        self.assertFalse(version_is_affected(exact, "7-zip", "23.02"))
+        self.assertTrue(version_is_affected(exact, {"7-zip"}, "23.01"))
+        self.assertFalse(version_is_affected(exact, {"7-zip"}, "23.02"))
         other = {"configurations": [{"nodes": [{"cpeMatch": [{"vulnerable": True, "criteria": "cpe:2.3:a:other:tool:1.0:*:*:*:*:*:*:*"}]}]}]}
-        self.assertIsNone(version_is_affected(other, "7-zip", "23.01"))
-        self.assertIsNone(version_is_affected({}, "7-zip", "23.01"))
+        self.assertIsNone(version_is_affected(other, {"7-zip"}, "23.01"))
+        self.assertIsNone(version_is_affected({}, {"7-zip"}, "23.01"))
+
+    def test_regression_false_positives_seen_on_real_scan(self):
+        # Legacy Edge (CPE "edge", version "-") must not be attributed to Chromium Edge
+        legacy_edge = {"configurations": [{"nodes": [{"cpeMatch": [{"vulnerable": True, "criteria": "cpe:2.3:a:microsoft:edge:-:*:*:*:*:*:*:*"}]}]}]}
+        self.assertIsNone(version_is_affected(legacy_edge, {"edge_chromium"}, "141.0.3537.71"))
+        # A GNOME plugin named nautilus-python is not Python itself
+        plugin = {"configurations": [{"nodes": [{"cpeMatch": [{"vulnerable": True, "criteria": "cpe:2.3:a:gnome:nautilus-python:*:*:*:*:*:*:*:*"}]}]}]}
+        self.assertIsNone(version_is_affected(plugin, {"python"}, "3.14.7"))
+        # A product-wide "*" match with no bounds really does affect every version
+        wide = {"configurations": [{"nodes": [{"cpeMatch": [{"vulnerable": True, "criteria": "cpe:2.3:a:python:python:*:*:*:*:*:*:*:*"}]}]}]}
+        self.assertTrue(version_is_affected(wide, {"python"}, "3.14.7"))
 
     def test_allowlist_uses_whole_words(self):
         items = [SoftwareItem(name="JavaScript Helper Tools"), SoftwareItem(name="Java(TM) SE Development Kit"),
@@ -273,6 +284,36 @@ class VersionMatchingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EventLogCollectorTests(unittest.TestCase):
+    """Collector behaviour that does not need Administrator rights."""
+
+    def test_clixml_error_is_cleaned(self):
+        from collectors.event_logs import clean_powershell_error
+        raw = '#< CLIXML\n<Objs><S S="Error">Cannot read the Security log._x000D__x000A_</S></Objs>'
+        self.assertEqual(clean_powershell_error(raw), "Cannot read the Security log.")
+        self.assertEqual(clean_powershell_error("plain error"), "plain error")
+
+    def test_unreadable_log_is_an_error_not_a_clean_pass(self):
+        from unittest.mock import patch
+        from collectors.event_logs import run_event_log_audit
+        with patch("collectors.event_logs.collect_security_events", return_value=(False, [], "Cannot read the Security log")):
+            alerts, findings, _ = run_event_log_audit(scan_id=1)
+        self.assertEqual(alerts, [])
+        self.assertEqual([f.status for f in findings], ["error"])
+
+
+class VersionResolutionTests(unittest.TestCase):
+    """Registry DisplayVersion can be coarser than the real version (seen on a real Python install)."""
+
+    def test_display_name_version_wins_when_more_precise(self):
+        from collectors.software_inventory import resolve_version
+        self.assertEqual(resolve_version("Python 3.14.7 (64-bit)", "3.14-64"), "3.14.7")
+        self.assertEqual(resolve_version("7-Zip 24.09 (x64)", "24.09"), "24.09")
+        self.assertEqual(resolve_version("Google Chrome", "141.0.7390.67"), "141.0.7390.67")
+        self.assertEqual(resolve_version("Some App", "Unknown"), "Unknown")
+        self.assertEqual(resolve_version("Tool 1.2.3", "Unknown"), "1.2.3")
 
 
 class EntrypointTests(unittest.TestCase):

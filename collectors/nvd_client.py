@@ -13,11 +13,17 @@ Features:
 import re
 import time
 import requests
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Iterable, List, Dict, Any, Optional, Tuple
 
 from config import get_config
 from db.database import get_cached_cves, insert_cached_cve
 from db.models import SoftwareItem, Finding
+
+
+# Cache marker meaning "NVD was queried and no CVE affects this product version"
+NO_CVE_SENTINEL = "NONE"
+# Bump when the matching logic changes so results cached by older logic are never reused
+CACHE_KEY_SUFFIX = "#cpe2"
 
 
 def map_cvss_to_impact(cvss_score: float) -> int:
@@ -105,26 +111,27 @@ def parse_version(ver: str) -> Tuple[int, ...]:
     return tuple(int(n) for n in match.group(0).split("."))[:6] if match else ()
 
 
-def version_is_affected(cve_data: Dict[str, Any], keyword: str, installed_version: str) -> Optional[bool]:
+def version_is_affected(cve_data: Dict[str, Any], products: Iterable[str], installed_version: str) -> Optional[bool]:
     """
     Decide whether an installed version falls inside a CVE's affected CPE ranges.
 
-    Looks at the vulnerable CPE matches whose CPE product contains `keyword` and checks
-    the exact version or the versionStart/End range bounds published by NVD.
+    Only vulnerable CPE matches whose CPE *product* is exactly one of `products` are considered
+    (so "nautilus-python" never counts as "python"). A CPE version of "-" means "not applicable"
+    and carries no version information, so it is ignored rather than treated as "all versions".
 
     Args:
         cve_data: The 'cve' object from the NVD API response.
-        keyword: Matched allowlist keyword (e.g. 'google chrome').
+        products: Exact CPE product names for the allowlisted application (e.g. {"7-zip"}).
         installed_version: Installed version string from the registry.
 
     Returns:
         True if affected, False if provably not affected, None if NVD gives no usable
-        version data for this product (the CVE cannot be confirmed either way).
+        version data for this product.
     """
     installed = parse_version(installed_version)
     if not installed:
         return None
-    key_tokens = [t for t in re.split(r"[^a-z0-9+]+", keyword.lower()) if t and t not in ("google", "mozilla", "microsoft", "media", "player")]
+    wanted = {p.replace("\\", "").lower() for p in products}
     saw_relevant = False
 
     def walk(nodes: List[Dict[str, Any]]):
@@ -139,12 +146,12 @@ def version_is_affected(cve_data: Dict[str, Any], keyword: str, installed_versio
             parts = match.get("criteria", "").split(":")
             if len(parts) < 6:
                 continue
-            cpe_product, cpe_version = parts[4].lower(), parts[5]
-            if key_tokens and not any(tok in cpe_product for tok in key_tokens):
+            cpe_product, cpe_version = parts[4].replace("\\", "").lower(), parts[5]
+            if cpe_product not in wanted or cpe_version == "-":
                 continue
             saw_relevant = True
 
-            if cpe_version not in ("*", "-"):
+            if cpe_version != "*":
                 if parse_version(cpe_version) == installed:
                     return True
                 continue
@@ -154,7 +161,7 @@ def version_is_affected(cve_data: Dict[str, Any], keyword: str, installed_versio
             high_inc = match.get("versionEndIncluding")
             high_exc = match.get("versionEndExcluding")
             if not any((low_inc, low_exc, high_inc, high_exc)):
-                return True  # product-wide match, no version bounds
+                return True  # product-wide match with no version bounds: every version affected
             if low_inc and installed < parse_version(low_inc):
                 continue
             if low_exc and installed <= parse_version(low_exc):
@@ -192,6 +199,40 @@ class NvdClient:
             time.sleep(self.delay_seconds - elapsed)
         self.last_request_time = time.time()
 
+    def _fetch_page(self, vendor: str, cpe_product: str, start_index: int) -> Tuple[bool, Dict[str, Any], str]:
+        """Fetch one page of CVEs for an exact CPE vendor:product. Returns (ok, json, error_message)."""
+        headers = {
+            "User-Agent": "WinSentinel-Vulnerability-Auditor/1.0",
+            "Accept": "application/json",
+        }
+        if self.api_key:
+            headers["apiKey"] = self.api_key
+        params = {
+            "virtualMatchString": f"cpe:2.3:a:{vendor}:{cpe_product}",
+            "resultsPerPage": 2000,
+            "startIndex": start_index,
+        }
+        self._throttle()
+        try:
+            resp = requests.get(self.base_url, params=params, headers=headers, timeout=self.timeout_seconds * 4)
+        except requests.exceptions.Timeout:
+            return False, {}, "NVD API connection timed out. CVE lookup skipped (Offline Mode)."
+        except requests.exceptions.ConnectionError:
+            return False, {}, "NVD API unreachable / DNS resolution failed. CVE lookup skipped (Offline Mode)."
+        except Exception as exc:
+            return False, {}, f"CVE lookup error: {exc}"
+
+        if resp.status_code == 403:
+            return False, {}, "NVD API Access Forbidden (403). Check API Key or IP restrictions."
+        if resp.status_code == 429:
+            return False, {}, "NVD API Rate Limit Exceeded (429). Please wait before scanning again."
+        if resp.status_code != 200:
+            return False, {}, f"NVD API returned HTTP {resp.status_code}."
+        try:
+            return True, resp.json(), ""
+        except ValueError:
+            return False, {}, "NVD API returned invalid JSON."
+
     def query_cves(
         self,
         product: str,
@@ -199,119 +240,93 @@ class NvdClient:
         db_path: Optional[str] = None,
     ) -> Tuple[bool, List[Dict[str, Any]], str]:
         """
-        Query CVEs for a product from the local cache or the live NVD API.
+        Find CVEs affecting an installed product version, from the local cache or the live NVD API.
+
+        The product keyword is mapped to its exact NVD CPE vendor:product (config.CPE_PRODUCTS),
+        every CVE for that CPE product is downloaded, and each CVE's published version ranges are
+        checked against the installed version. Results (including "no CVEs") are cached 24h.
 
         Args:
-            product: Product name or keyword (e.g. '7-zip').
-            version: Product version string.
+            product: Allowlisted product keyword (e.g. '7-zip').
+            version: Installed version string.
             db_path: Optional path to the database.
 
         Returns:
             Tuple[bool, List[Dict[str, Any]], str]: (success, list_of_cves, message).
         """
+        cfg = get_config()
         norm_product = product.lower().strip()
         norm_version = version.strip() if version else "Unknown"
 
-        # 1. Check local cache first
+        # 1. Local cache (a sentinel row records a fresh "zero CVEs" answer)
+        cache_key = norm_product + CACHE_KEY_SUFFIX
         cached = get_cached_cves(
-            product=norm_product,
+            product=cache_key,
             version=norm_version,
             max_age_hours=self.cache_ttl_hours,
             db_path=db_path,
         )
         if cached:
-            return True, cached, "Retrieved from local 24h cache"
+            records = [dict(c, product=norm_product) for c in cached if c["cve_id"] != NO_CVE_SENTINEL]
+            return True, records, "Retrieved from local 24h cache"
 
-        # 2. Live API query
-        self._throttle()
+        pairs = cfg.CPE_PRODUCTS.get(norm_product)
+        if not pairs:
+            return False, [], f"No exact NVD CPE mapping configured for '{product}'. CVE check skipped."
+        if not parse_version(norm_version):
+            return False, [], "Installed version is unknown, so affected-version matching is impossible. CVE check skipped."
 
-        headers = {
-            "User-Agent": "WinSentinel-Vulnerability-Auditor/1.0",
-            "Accept": "application/json",
-        }
-        if self.api_key:
-            headers["apiKey"] = self.api_key
+        # 2. Live NVD query, then exact-product + version-range filtering
+        wanted_products = {cpe_product for _, cpe_product in pairs}
+        found: Dict[str, Dict[str, Any]] = {}
 
-        params = {
-            "keywordSearch": norm_product,
-            "resultsPerPage": get_config().NVD_RESULTS_PER_PAGE,
-        }
+        for vendor, cpe_product in pairs:
+            start_index = 0
+            for _ in range(cfg.NVD_MAX_PAGES):
+                ok, data, err = self._fetch_page(vendor, cpe_product, start_index)
+                if not ok:
+                    return False, [], err
 
-        try:
-            resp = requests.get(
-                self.base_url,
-                params=params,
-                headers=headers,
-                timeout=self.timeout_seconds,
-            )
-
-            if resp.status_code == 403:
-                return False, [], "NVD API Access Forbidden (403). Check API Key or IP restrictions."
-            elif resp.status_code == 429:
-                return False, [], "NVD API Rate Limit Exceeded (429). Please wait before scanning again."
-            elif resp.status_code != 200:
-                return False, [], f"NVD API returned HTTP {resp.status_code}."
-
-            data = resp.json()
-            vulnerabilities = data.get("vulnerabilities", [])
-            cve_records: List[Dict[str, Any]] = []
-
-            for item in vulnerabilities:
-                cve_data = item.get("cve", {})
-                cve_id = cve_data.get("id", "Unknown")
-
-                # Keep only CVEs whose published CPE ranges include the installed version.
-                # Unknown versions keep the keyword match; CVEs with no usable version data are dropped.
-                if norm_version != "Unknown":
-                    if version_is_affected(cve_data, norm_product, norm_version) is not True:
+                for item in data.get("vulnerabilities", []):
+                    cve_data = item.get("cve", {})
+                    cve_id = cve_data.get("id", "Unknown")
+                    if cve_id in found:
+                        continue
+                    if version_is_affected(cve_data, wanted_products, norm_version) is not True:
                         continue
 
-                # Extract English description
-                descriptions = cve_data.get("descriptions", [])
-                desc_text = "No description provided."
-                for d in descriptions:
-                    if d.get("lang") == "en":
-                        desc_text = d.get("value", desc_text)
-                        break
+                    desc_text = "No description provided."
+                    for d in cve_data.get("descriptions", []):
+                        if d.get("lang") == "en":
+                            desc_text = d.get("value", desc_text)
+                            break
 
-                # Extract CVSS v3.1 or v3.0 score, fallback to v2.0
-                metrics = cve_data.get("metrics", {})
-                cvss_score = 5.0  # Moderate fallback when NVD has not scored the CVE yet
-                if "cvssMetricV31" in metrics and metrics["cvssMetricV31"]:
-                    cvss_score = float(metrics["cvssMetricV31"][0]["cvssData"]["baseScore"])
-                elif "cvssMetricV30" in metrics and metrics["cvssMetricV30"]:
-                    cvss_score = float(metrics["cvssMetricV30"][0]["cvssData"]["baseScore"])
-                elif "cvssMetricV2" in metrics and metrics["cvssMetricV2"]:
-                    cvss_score = float(metrics["cvssMetricV2"][0]["cvssData"]["baseScore"])
+                    metrics = cve_data.get("metrics", {})
+                    cvss_score = 5.0  # Moderate fallback when NVD has not scored the CVE yet
+                    for key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
+                        if metrics.get(key):
+                            cvss_score = float(metrics[key][0]["cvssData"]["baseScore"])
+                            break
 
-                # Store in SQLite cve_cache table
-                insert_cached_cve(
-                    product=norm_product,
-                    version=norm_version,
-                    cve_id=cve_id,
-                    cvss_score=cvss_score,
-                    description=desc_text[:500],  # Truncate for display safety
-                    db_path=db_path,
-                )
+                    found[cve_id] = {
+                        "product": norm_product,
+                        "version": norm_version,
+                        "cve_id": cve_id,
+                        "cvss_score": cvss_score,
+                        "description": desc_text[:500],
+                    }
 
-                cve_records.append({
-                    "product": norm_product,
-                    "version": norm_version,
-                    "cve_id": cve_id,
-                    "cvss_score": cvss_score,
-                    "description": desc_text[:500],
-                })
+                start_index += data.get("resultsPerPage", 2000)
+                if start_index >= data.get("totalResults", 0):
+                    break
 
-            # Highest severity first and cap, so dashboards show the worst CVEs
-            cve_records.sort(key=lambda c: c["cvss_score"], reverse=True)
-            return True, cve_records[:10], "Successfully fetched from NVD API"
-
-        except requests.exceptions.Timeout:
-            return False, [], "NVD API connection timed out. CVE lookup skipped (Offline Mode)."
-        except requests.exceptions.ConnectionError:
-            return False, [], "NVD API unreachable / DNS resolution failed. CVE lookup skipped (Offline Mode)."
-        except Exception as exc:
-            return False, [], f"CVE lookup error: {exc}"
+        records = sorted(found.values(), key=lambda c: c["cvss_score"], reverse=True)[:10]
+        if records:
+            for r in records:
+                insert_cached_cve(cache_key, norm_version, r["cve_id"], r["cvss_score"], r["description"], db_path=db_path)
+        else:
+            insert_cached_cve(cache_key, norm_version, NO_CVE_SENTINEL, 0.0, "No CVEs affect this version", db_path=db_path)
+        return True, records, "Successfully fetched from NVD API"
 
 
 def audit_software_vulnerabilities(

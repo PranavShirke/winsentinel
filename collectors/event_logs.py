@@ -10,6 +10,7 @@ import sys
 import os
 import json
 import base64
+import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -19,6 +20,25 @@ from collectors.config_audit import run_command
 from analysis.bruteforce import analyze_security_events
 
 FIXTURES_PATH = Path(__file__).resolve().parent.parent / "fixtures" / "sample_events.json"
+
+
+def clean_powershell_error(stderr: str) -> str:
+    """
+    Turn PowerShell's CLIXML-wrapped stderr into plain text.
+
+    With -EncodedCommand, errors arrive as '#< CLIXML <Objs>...<S S="Error">text_x000D__x000A_</S>...'.
+
+    Args:
+        stderr: Raw stderr from the PowerShell process.
+
+    Returns:
+        str: Human-readable error text.
+    """
+    if "CLIXML" not in stderr:
+        return stderr.strip()
+    parts = re.findall(r'<S S="Error">(.*?)</S>', stderr, flags=re.DOTALL)
+    text = "".join(parts).replace("_x000D_", "").replace("_x000A_", " ")
+    return text.strip() or "PowerShell reported an error."
 
 
 def load_events_from_fixture(fixture_path: Optional[Path] = None) -> List[Dict[str, Any]]:
@@ -69,6 +89,13 @@ def collect_security_events(
     ps_script = f"""
 $ErrorActionPreference = 'Stop'
 try {{
+    # Windows reports "no events found" (not "access denied") when a non-admin reads the
+    # Security log, which would look like a clean log. Probe first so that is never a false all-clear.
+    try {{ $null = Get-WinEvent -LogName Security -MaxEvents 1 -ErrorAction Stop }}
+    catch {{
+        [Console]::Error.WriteLine('Cannot read the Security log (access denied or log empty). Run as Administrator or join Event Log Readers.')
+        exit 1
+    }}
     $startDate = (Get-Date).AddDays(-{days})
     $rawEvents = @()
     foreach ($q in @(@{{ids = @(4625, 4720, 4740, 4732); max = {max_events}}}, @{{ids = @(4624, 4672); max = {max_events // 2}}})) {{
@@ -119,7 +146,7 @@ try {{
     )
 
     if not success:
-        err_msg = stderr.strip() or "Security log query failed (access denied or log unavailable)."
+        err_msg = clean_powershell_error(stderr) or "Security log query failed (access denied or log unavailable)."
         return False, [], err_msg
     if not stdout.strip():
         return True, [], ""

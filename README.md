@@ -6,7 +6,7 @@
 [![Flask](https://img.shields.io/badge/Flask-3.0-green?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite-lightblue?logo=sqlite)](https://sqlite.org/)
 [![License](https://img.shields.io/badge/License-Academic-orange)](./LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-67%20Passing-brightgreen)](#running-tests)
+[![Tests](https://img.shields.io/badge/Tests-74%20Passing-brightgreen)](#running-tests)
 
 A Python-based Windows security posture analysis tool built as a micro-project for three academic cybersecurity subjects:
 **VAPT Lab** · **Security Information Management** · **Application Security**
@@ -147,7 +147,7 @@ WinSentinel/
 │   ├── generate_failed_logins.py   # Simulate Event Log 4625 entries
 │   └── load_sample_events.py       # Load fixture events into DB
 │
-├── tests/                          # Unit & integration tests (67 tests)
+├── tests/                          # Unit & integration tests (74 tests)
 │   ├── test_skeleton.py            # DB schema, user auth, config defaults
 │   ├── test_config_parsers.py      # Config audit parser coverage
 │   ├── test_bruteforce.py          # Brute-force detection logic
@@ -264,6 +264,24 @@ Open your browser at **[http://127.0.0.1:5000](http://127.0.0.1:5000)** to view 
 
 ---
 
+## NVD API Key (optional)
+
+The CVE lookup works without a key but is rate-limited (about 5 requests per 30 seconds, so a scan with several allow-listed apps takes a few minutes). A free key raises that roughly tenfold.
+
+1. Request a key at <https://nvd.nist.gov/developers/request-an-api-key> (enter your email, then click the activation link NVD emails you).
+2. Put it in `.env`: `NVD_API_KEY=your-key-here` (never commit `.env`).
+3. Restart `serve` / `scan`.
+
+---
+
+## Security Documentation
+
+- [STRIDE threat model with data-flow diagram](docs/threat_model.md)
+- [Secure SDLC](docs/secure_sdlc.md)
+- [Syllabus mapping](docs/syllabus_mapping.md)
+
+---
+
 ## Security Architecture
 
 | Control | Implementation |
@@ -312,7 +330,7 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-Expected: **67 passed** in ~10 seconds.
+Expected: **74 passed** in ~10 seconds.
 
 ```
 tests/test_skeleton.py         4 tests   DB schema, user auth, config defaults
@@ -333,7 +351,7 @@ tests/test_web.py             21 tests   End-to-end web flow, open-redirect, CSV
 - **NVD rate limits** — The free NVD API allows ~5 requests/30s. Set `NVD_API_KEY` in `.env` for higher throughput.
 - **CVE version filtering** — CVEs are kept only when the installed version falls inside NVD's published CPE version range; CVEs with no usable version data for the product are dropped (possible false negatives, far fewer false positives).
 - **CPE mapping** — Only applications listed in `NVD_ALLOWLIST` (in `config.py`) are checked against NVD. The list covers common apps (Chrome, Firefox, Python, 7-Zip, VLC, etc.).
-- **Elevated privileges** — Running without Administrator causes Event Log and some policy checks to return `error` status instead of real values.
+- **Elevated privileges** — Reading the Security event log needs Administrator (or the Event Log Readers group). Without it WinSentinel reports an **error** finding instead of a clean result; run PowerShell as Administrator for brute-force detection.
 - **WMIC deprecated** — Windows 11 22H2+ deprecates WMIC. WinSentinel uses `sc query`, `netsh`, and PowerShell alternatives throughout.
 
 ---

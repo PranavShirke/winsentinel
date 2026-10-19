@@ -318,7 +318,7 @@ def parse_listening_ports(
         List[Dict[str, Any]]: List of flagged listening port entries.
     """
     flagged = []
-    seen = set()
+    by_key: Dict[Tuple[int, int], Dict[str, Any]] = {}
 
     for conn in connections:
         if conn.status != "LISTEN":
@@ -328,11 +328,17 @@ def parse_listening_ports(
         ip = conn.laddr.ip
         pid = conn.pid or 0
 
+        # Loopback-only listeners are not reachable from the network, so they are not exposure
+        if ip in ("127.0.0.1", "::1"):
+            continue
+
         if port in risky_ports_map:
-            key = (ip, port, pid)
-            if key in seen:
+            key = (port, pid)
+            if key in by_key:
+                # Same service listening on IPv4 and IPv6: report once, list both addresses
+                if ip not in by_key[key]["ip"].split(" / "):
+                    by_key[key]["ip"] += " / " + ip
                 continue
-            seen.add(key)
 
             proc_name = "Unknown"
             if pid > 0:
@@ -342,13 +348,15 @@ def parse_listening_ports(
                 except Exception:
                     proc_name = "System/Protected"
 
-            flagged.append({
+            entry = {
                 "port": port,
                 "ip": ip,
                 "pid": pid,
                 "process_name": proc_name,
                 "service": risky_ports_map[port],
-            })
+            }
+            by_key[key] = entry
+            flagged.append(entry)
 
     return flagged
 
