@@ -16,6 +16,7 @@ from flask import Response, session
 ALLOWED_SEVERITIES = {"Critical", "High", "Medium", "Low", "Info", "Error"}
 ALLOWED_MODULES = {"config", "logs", "software"}
 ALLOWED_STATUSES = {"pass", "fail", "error"}
+ALLOWED_REGISTER = {"open", "in_progress", "accepted", "false_positive"}
 
 
 def apply_security_headers(response: Response) -> Response:
@@ -130,6 +131,22 @@ def validate_status(val: Optional[str]) -> Optional[str]:
         return None
     cleaned = val.strip().lower()
     return cleaned if cleaned in ALLOWED_STATUSES else None
+
+
+def validate_register(val: Optional[str]) -> Optional[str]:
+    """
+    Validate a risk-register state (open, in_progress, accepted, false_positive).
+
+    Args:
+        val: Input string.
+
+    Returns:
+        Optional[str]: Validated state or None.
+    """
+    if not val:
+        return None
+    cleaned = val.strip().lower()
+    return cleaned if cleaned in ALLOWED_REGISTER else None
 
 
 def sanitize_search_query(val: Optional[str], max_len: int = 100) -> Optional[str]:

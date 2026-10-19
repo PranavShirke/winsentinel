@@ -136,6 +136,19 @@ def init_db(db_path: Optional[str] = None) -> None:
         );
     """)
 
+    # 8. Risk register (analyst decisions on findings, kept across scans)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS finding_status (
+            fingerprint TEXT PRIMARY KEY,
+            module TEXT NOT NULL,
+            title TEXT NOT NULL,
+            status TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            updated_by TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL
+        );
+    """)
+
     # Drop CVE results cached by older matching logic (keys without a "#" version suffix)
     cursor.execute("DELETE FROM cve_cache WHERE product NOT LIKE '%#%';")
 
@@ -788,3 +801,63 @@ def insert_cached_cve(
     )
     conn.commit()
     conn.close()
+
+
+# -------------------------------------------------------------------------
+# Risk Register Helpers
+# -------------------------------------------------------------------------
+
+REGISTER_STATUSES = ("open", "in_progress", "accepted", "false_positive")
+
+
+def finding_fingerprint(module: str, title: str) -> str:
+    """Stable key identifying "the same finding" across scans."""
+    return f"{module}|{title}"
+
+
+def set_finding_status(
+    module: str,
+    title: str,
+    status: str,
+    note: str = "",
+    updated_by: str = "",
+    db_path: Optional[str] = None,
+) -> None:
+    """
+    Record an analyst decision on a finding (or reset it to 'open').
+
+    Args:
+        module: Finding module ('config', 'logs', 'software').
+        title: Finding title.
+        status: One of REGISTER_STATUSES. 'open' removes the decision.
+        note: Justification (required by the web layer for accepted / false_positive).
+        updated_by: Username making the decision.
+        db_path: Optional path to the database file.
+    """
+    if status not in REGISTER_STATUSES:
+        raise ValueError(f"Invalid register status: {status}")
+    fingerprint = finding_fingerprint(module, title)
+    conn = get_db_connection(db_path)
+    if status == "open":
+        conn.execute("DELETE FROM finding_status WHERE fingerprint = ?;", (fingerprint,))
+    else:
+        conn.execute(
+            """
+            INSERT INTO finding_status (fingerprint, module, title, status, note, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(fingerprint) DO UPDATE SET
+                status = excluded.status, note = excluded.note,
+                updated_by = excluded.updated_by, updated_at = excluded.updated_at;
+            """,
+            (fingerprint, module, title, status, note, updated_by, datetime.now(timezone.utc).isoformat()),
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_finding_statuses(db_path: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+    """Return all register decisions keyed by finding fingerprint."""
+    conn = get_db_connection(db_path)
+    rows = conn.execute("SELECT * FROM finding_status;").fetchall()
+    conn.close()
+    return {r["fingerprint"]: dict(r) for r in rows}

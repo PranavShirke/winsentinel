@@ -8,12 +8,13 @@
   <div>
     <div class="page-kicker">Audit results</div>
     <h1 class="page-title">Findings</h1>
-    <p class="page-subtitle">Every control checked across configuration, Security event logs and installed software. Select a row for evidence and the fix.</p>
+    <p class="page-subtitle">Every control checked across configuration, Security event logs and installed software. Filter instantly, open a row for evidence and the fix, and record a risk decision.</p>
   </div>
   {% if scan %}
     <div class="page-actions">
       <span class="scan-chip">SCAN #{{ scan.id }}</span>
-      <a class="btn btn-secondary btn-sm" href="{{ url_for('views.export_findings_csv', scan_id=scan.id) }}">{{ icon('download', 'icon-sm') }} Export CSV</a>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('views.export_findings_csv', scan_id=scan.id) }}">{{ icon('download', 'icon-sm') }} CSV</a>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('views.download_report_pdf', scan_id=scan.id) }}">{{ icon('download', 'icon-sm') }} PDF</a>
     </div>
   {% endif %}
 </div>
@@ -32,60 +33,54 @@
     <div class="summary-cell"><strong>{{ findings|selectattr('status', 'equalto', 'pass')|list|length }}</strong><span>Passed</span></div>
   </div>
 
-  <form method="GET" action="{{ url_for('views.findings') }}" class="filter-bar" role="search">
-    {% if request.args.get('scan_id') %}
-      <input type="hidden" name="scan_id" value="{{ scan.id }}">
-    {% endif %}
-
-    <div class="filter-group">
-      <label for="filter-severity">Severity</label>
-      <select id="filter-severity" name="severity" class="input-control">
-        <option value="">All</option>
-        {% for s in ['Critical', 'High', 'Medium', 'Low', 'Info', 'Error'] %}
-          <option value="{{ s }}" {% if selected_severity == s %}selected{% endif %}>{{ s }}</option>
-        {% endfor %}
-      </select>
+  <div class="toolbar" x-data="findingsToolbar" role="search">
+    <div class="chip-group grow" aria-label="Severity filter">
+      <span class="chip-label">Severity</span>
+      <template x-for="c in sevChips" :key="c.key">
+        <button type="button" :class="c.cls" :data-kind="c.kind" :data-value="c.value" @click="pick"><span x-text="c.label"></span> <span class="n" x-text="c.count"></span></button>
+      </template>
     </div>
-    <div class="filter-group">
-      <label for="filter-module">Module</label>
-      <select id="filter-module" name="module" class="input-control">
-        <option value="">All</option>
-        <option value="config" {% if selected_module == 'config' %}selected{% endif %}>Configuration</option>
-        <option value="logs" {% if selected_module == 'logs' %}selected{% endif %}>Event logs</option>
-        <option value="software" {% if selected_module == 'software' %}selected{% endif %}>Software CVEs</option>
-      </select>
+    <div class="chip-group" aria-label="Status filter">
+      <template x-for="c in statusChips" :key="c.key">
+        <button type="button" :class="c.cls" :data-kind="c.kind" :data-value="c.value" @click="pick"><span x-text="c.label"></span></button>
+      </template>
     </div>
-    <div class="filter-group">
-      <label for="filter-status">Status</label>
-      <select id="filter-status" name="status" class="input-control">
-        <option value="">All</option>
-        <option value="fail" {% if selected_status == 'fail' %}selected{% endif %}>Fail</option>
-        <option value="pass" {% if selected_status == 'pass' %}selected{% endif %}>Pass</option>
-        <option value="error" {% if selected_status == 'error' %}selected{% endif %}>Error</option>
-      </select>
+    <div class="chip-group" aria-label="Risk register filter">
+      <template x-for="c in regChips" :key="c.key">
+        <button type="button" :class="c.cls" :data-kind="c.kind" :data-value="c.value" @click="pick"><span x-text="c.label"></span></button>
+      </template>
     </div>
-    <div class="filter-group grow">
-      <label for="filter-search">Search</label>
-      <input type="search" id="filter-search" name="search" class="input-control" maxlength="100" placeholder="Title or evidence" value="{{ selected_search or '' }}">
-    </div>
-    <button type="submit" class="btn btn-primary btn-sm">Apply</button>
-    <a href="{{ url_for('views.findings', scan_id=scan.id) }}" class="btn btn-secondary btn-sm">Reset</a>
-  </form>
+    <label class="sr-only" for="finding-search">Search findings</label>
+    <input id="finding-search" type="search" class="input-control grow" x-ref="q" maxlength="100" placeholder="Search title, evidence or module" value="{{ selected_search or '' }}" @input="onQuery">
+    <label class="sr-only" for="finding-sort">Sort</label>
+    <select id="finding-sort" class="input-control compact" x-model="sort" @change="applySort">
+      <option value="risk">Sort: risk score</option>
+      <option value="severity">Sort: severity</option>
+      <option value="module">Sort: module</option>
+      <option value="title">Sort: title A-Z</option>
+    </select>
+    <button type="button" class="btn btn-secondary btn-sm" @click="reset">Reset</button>
+    <span class="result-count"><b x-text="f.visibleCount"></b> of <span x-text="f.total"></span> shown</span>
+  </div>
 
   <section class="panel panel-flush">
     {% if not findings %}
-      <div class="empty-state"><p>No findings match these filters.</p></div>
+      <div class="empty-state"><p>No findings match this view.</p></div>
     {% else %}
       <div class="table-responsive">
-        <table class="table">
+        <table class="table" id="findings-table">
           <thead>
-            <tr><th>Severity</th><th>Check</th><th>Module</th><th>Risk (L &times; I)</th><th>Status</th><th><span class="sr-only">Details</span></th></tr>
+            <tr><th>Severity</th><th>Check</th><th>Module</th><th>Risk (L &times; I)</th><th>Status</th><th>Decision</th><th><span class="sr-only">Details</span></th></tr>
           </thead>
-          <tbody>
-            {% for f in findings %}
-              <tr class="table-row-clickable" tabindex="0" role="button" aria-expanded="false" aria-controls="detail-row-{{ f.id }}" data-target="detail-row-{{ f.id }}">
+          {% for f in findings %}
+            <tbody class="finding" x-data="findingRow" x-show="visible" :class="rowClass"
+                   @finding-updated.window="onUpdated"
+                   data-scan="{{ scan.id }}" data-id="{{ f.id }}" data-severity="{{ f.severity }}" data-status="{{ f.status }}"
+                   data-module="{{ f.module }}" data-title="{{ f.title }}" data-text="{{ f.evidence }}" data-risk="{{ f.risk_score }}"
+                   data-register="{{ f.register_status }}" data-note="{{ f.register_note }}" data-by="{{ f.register_by }}" data-at="{{ f.register_at }}">
+              <tr class="finding-main" tabindex="0" role="button" :aria-expanded="expanded" @click="toggle" @keydown.enter.prevent="toggle" @keydown.space.prevent="toggle">
                 <td>{{ sev_badge(f.severity) }}</td>
-                <td class="fw-600">{{ f.title }}</td>
+                <td class="fw-600 finding-title">{{ f.title }}</td>
                 <td class="mono text-dim">{{ f.module|upper }}</td>
                 <td>
                   {% if f.status == 'fail' %}
@@ -95,14 +90,21 @@
                   {% endif %}
                 </td>
                 <td>{{ status_badge(f.status) }}</td>
+                <td><span x-show="hasDecision" :class="registerClass" x-text="registerLabel"></span></td>
                 <td><span class="expand-cue">Details {{ icon('chevron', 'icon-sm') }}</span></td>
               </tr>
-              <tr id="detail-row-{{ f.id }}" class="detail-row">
-                <td colspan="6">
+              <tr class="detail-row">
+                <td colspan="7">
                   <div class="detail-inner">
                     <div>
                       <div class="detail-label">Evidence</div>
                       <div class="evidence-box">{{ f.evidence }}</div>
+                      {% if f.frameworks.attack or f.frameworks.cis %}
+                        <div class="tags">
+                          {% for t in f.frameworks.attack %}<span class="tag tag-attack" title="MITRE ATT&amp;CK: {{ t.name }}">ATT&amp;CK <b>{{ t.id }}</b></span>{% endfor %}
+                          {% for t in f.frameworks.cis %}<span class="tag tag-cis" title="CIS Controls v8: {{ t.name }}">CIS <b>{{ t.id }}</b></span>{% endfor %}
+                        </div>
+                      {% endif %}
                     </div>
                     <div>
                       {% if f.remediation and f.status != 'pass' %}
@@ -112,15 +114,52 @@
                         <div class="detail-label">Result</div>
                         <p class="text-dim">Control is compliant. No action required.</p>
                       {% endif %}
+                      <div class="decision-note" x-show="hasDecision">
+                        <strong x-text="registerLabel"></strong> <span class="text-faint" x-text="byText"></span><br>
+                        <span x-text="noteText"></span>
+                      </div>
+                      {% if f.status != 'pass' %}
+                        <div class="detail-actions">
+                          <button type="button" class="btn btn-secondary btn-sm" @click="openRegister">{{ icon('clipboard', 'icon-sm') }} Risk decision</button>
+                        </div>
+                      {% endif %}
                     </div>
                   </div>
                 </td>
               </tr>
-            {% endfor %}
-          </tbody>
+            </tbody>
+          {% endfor %}
         </table>
       </div>
     {% endif %}
   </section>
+{% endif %}
+{% endblock %}
+
+{% block overlays %}
+{% if scan %}
+<div class="overlay center" x-data="registerModal" x-cloak x-show="open" @open-register.window="show" @keydown.escape.window="close" @click.self="close" role="dialog" aria-modal="true" aria-labelledby="reg-title">
+  <form class="dialog" @submit.prevent="submit">
+    <div class="dialog-head">
+      <h2 id="reg-title">Risk decision</h2>
+      <p x-text="title"></p>
+    </div>
+    <div class="dialog-body">
+      <div class="choice-grid">
+        <label class="choice"><input type="radio" name="reg-status" value="open" x-model="status"><span><b>Open</b>Needs action</span></label>
+        <label class="choice"><input type="radio" name="reg-status" value="in_progress" x-model="status"><span><b>In progress</b>Being fixed</span></label>
+        <label class="choice"><input type="radio" name="reg-status" value="accepted" x-model="status"><span><b>Accepted risk</b>Known, tolerated</span></label>
+        <label class="choice"><input type="radio" name="reg-status" value="false_positive" x-model="status"><span><b>False positive</b>Not a real issue</span></label>
+      </div>
+      <label class="field-label" for="reg-note">Justification <span x-show="needsNote">(required)</span></label>
+      <textarea id="reg-note" class="input-control" x-ref="note" x-model="note" maxlength="500" placeholder="Why is this accepted or a false positive? Who approved it?"></textarea>
+      <div class="dialog-error" role="alert" x-text="error"></div>
+    </div>
+    <div class="dialog-foot">
+      <button type="button" class="btn btn-secondary btn-sm" @click="close">Cancel</button>
+      <button type="submit" class="btn btn-primary btn-sm" :disabled="busy" x-text="saveLabel"></button>
+    </div>
+  </form>
+</div>
 {% endif %}
 {% endblock %}

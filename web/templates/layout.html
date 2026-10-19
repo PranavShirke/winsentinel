@@ -5,9 +5,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="dark light">
   <title>{% block title %}Console{% endblock %} | WinSentinel</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M12 3l8 3v6c0 5-3.500 8-8 9-4.500-1-8-4-8-9V6z%27 fill=%27none%27 stroke=%27%233ddbd9%27 stroke-width=%272%27/%3E%3C/svg%3E">
+  <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <script defer src="{{ url_for('static', filename='js/ui.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='vendor/alpine.csp.min.js') }}"></script>
 </head>
 <body class="app">
   <a class="skip-link" href="#main">Skip to content</a>
@@ -28,6 +32,7 @@
         </ul>
         <div class="nav-section">Analyse</div>
         <ul class="nav-links">
+          <li><a href="{{ url_for('views.frameworks') }}" class="nav-link {% if active_page == 'frameworks' %}active{% endif %}" {% if active_page == 'frameworks' %}aria-current="page"{% endif %}>{{ icon('matrix') }} Frameworks</a></li>
           <li><a href="{{ url_for('views.history') }}" class="nav-link {% if active_page == 'history' %}active{% endif %}" {% if active_page == 'history' %}aria-current="page"{% endif %}>{{ icon('history') }} Scan history</a></li>
           <li><a href="{{ url_for('views.compare') }}" class="nav-link {% if active_page == 'compare' %}active{% endif %}" {% if active_page == 'compare' %}aria-current="page"{% endif %}>{{ icon('compare') }} Compare scans</a></li>
           <li><a href="{{ url_for('views.report_preview') }}" class="nav-link {% if active_page == 'report' %}active{% endif %}" {% if active_page == 'report' %}aria-current="page"{% endif %}>{{ icon('report') }} Report</a></li>
@@ -52,9 +57,20 @@
           <span><span class="live-dot"></span>Audited host <strong>{{ current_hostname }}</strong></span>
           <span>Last scan <strong>{{ last_scan_time or 'never' }}</strong></span>
         </div>
-        <button id="btn-start-scan" type="button" class="btn btn-primary btn-sm">
-          {{ icon('scan', 'icon-sm') }} Run new scan <span class="spinner" aria-hidden="true"></span>
-        </button>
+        <div class="topbar-actions">
+          {% if auto_scan_minutes %}
+            <span class="autoscan-chip" x-data="autoScan" data-next="{{ auto_scan_next }}" title="Automatic scan every {{ auto_scan_minutes }} minutes">
+              Auto-scan <b x-text="left">...</b>
+            </span>
+          {% endif %}
+          <button type="button" class="search-trigger" data-open-palette aria-label="Open command palette">
+            {{ icon('search', 'icon-sm') }} <span class="label">Search &amp; commands</span> <kbd>Ctrl K</kbd>
+          </button>
+          <button type="button" class="icon-btn" x-data="themeToggle" @click="switchTheme" aria-label="Switch light or dark theme" title="Switch theme">{{ icon('theme') }}</button>
+          <button id="btn-start-scan" type="button" class="btn btn-primary btn-sm">
+            {{ icon('scan', 'icon-sm') }} Run new scan <span class="spinner" aria-hidden="true"></span>
+          </button>
+        </div>
       </header>
 
       <main id="main" class="content-area">
@@ -92,6 +108,35 @@
       </footer>
     </div>
   </div>
+
+  <!-- Toasts -->
+  <div class="toaster" x-data="toaster" @toast.window="add" aria-live="polite">
+    <template x-for="t in items" :key="t.id">
+      <div :class="t.cls" role="status"><span x-text="t.message"></span></div>
+    </template>
+  </div>
+
+  <!-- Command palette -->
+  <div class="overlay" x-data="palette" x-cloak x-show="open"
+       @open-palette.window="show" @keydown.window.ctrl.k.prevent="show" @keydown.escape.window="hide" @keydown.slash.window="slash"
+       @click.self="hide" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="dialog palette">
+      <input class="palette-input" type="text" placeholder="Search findings or jump to a page..." x-ref="input" x-model="q"
+             @input="onInput" @keydown.arrow-down.prevent="move" @keydown.arrow-up.prevent="move" @keydown.enter.prevent="enter"
+             autocomplete="off" aria-label="Search">
+      <ul class="palette-list">
+        <template x-for="item in view" :key="item.key">
+          <li :class="item.cls" :data-idx="item.idx" @mouseenter="hover" @click="pick">
+            <span x-text="item.label"></span><span class="hint" x-text="item.hint"></span>
+          </li>
+        </template>
+      </ul>
+      <div class="palette-empty" x-show="isEmpty">No matches</div>
+      <div class="palette-foot"><span><kbd>&uarr;</kbd> <kbd>&darr;</kbd> navigate</span><span><kbd>Enter</kbd> open</span><span><kbd>Esc</kbd> close</span></div>
+    </div>
+  </div>
+
+  {% block overlays %}{% endblock %}
 
   <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>

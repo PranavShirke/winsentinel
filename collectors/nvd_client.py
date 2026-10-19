@@ -454,7 +454,7 @@ def audit_software_vulnerabilities(
                 evidence=(
                     f"Product '{item.name}' (Version: {item.version}) matched known CVE {cve_id} with CVSS {cvss}. "
                     f"Description: {desc[:250]}... "
-                    f"[Limitation Notice: Matched by product keyword '{kw}'. Confirm version applicability in vendor advisories.]"
+                    f"[Matched by exact NVD CPE product and the installed version falling inside the CVE's published affected range. Confirm against the vendor advisory.]"
                 ),
                 status="fail",
                 likelihood=likelihood,

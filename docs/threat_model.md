@@ -62,6 +62,10 @@ Data that crosses boundary 4 is limited to the allowlisted product CPE name sent
 | **I**nformation disclosure | Cached or framed sensitive pages | `Cache-Control: no-store` for authenticated pages and JSON/CSV; `X-Frame-Options: DENY`; `frame-ancestors 'none'`; `Referrer-Policy: no-referrer`; `Permissions-Policy`; COOP/CORP | None known |
 | **I**nformation disclosure | Stack traces in responses | Custom 400/404/405/500 handlers; `debug=False` hard-coded | None known |
 | **D**enial of service | Large requests or scan spam | `MAX_CONTENT_LENGTH` 64 KB; one scan at a time (lock returns HTTP 409) | A logged-in admin can still queue scans back to back |
+| **T**ampering | Forged risk-register decision (hide a real finding) | `POST /api/findings/status` requires login and CSRF token; module and status are allow-listed; the finding must exist in the given scan; accepting or marking a false positive needs a written justification; every decision stores the username and time, and is shown in the UI and reports | A logged-in admin can still accept a real risk (by design, but it is audited) |
+| **R**epudiation | Admin denies accepting a risk | Decisions record `updated_by` and `updated_at`, and appear in the HTML and PDF reports | Log not tamper-evident |
+| **D**enial of service | Auto-scan loop overloads host or NVD | Disabled by default; minimum 15-minute interval; reuses the single-scan lock | None known |
+| **I**nformation disclosure | Command palette search leaks data | `/api/search` requires login, length-limited query, parameterised LIKE, returns titles only | None known |
 | **E**levation of privilege | Reaching dashboard routes unauthenticated | `@login_required` on every data route and API; test suite asserts each protected path redirects to login | Single-admin model: no roles |
 
 ### 3.2 Scan worker to Windows host (boundary 3)
@@ -104,6 +108,8 @@ Data that crosses boundary 4 is limited to the allowlisted product CPE name sent
 | SQL injection and script tags in query parameters | `test_findings_filters_and_bad_params` |
 | Spreadsheet formula injection through the CSV export | `test_csv_export_neutralises_formulas` |
 | Header injection through the hostname in the download name | `test_report_download_filename_is_sanitised` |
+| Forge or malformed risk-register decisions | `test_register_requires_csrf`, `test_register_validation` |
+| Hide a finding without a reason | `test_register_validation` (justification required) |
 | Inline script or external resource slipping into a page | `test_login_success_and_every_page_renders`, `test_no_external_urls_in_pages` |
 
 ## 5. Out of scope

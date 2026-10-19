@@ -1075,9 +1075,17 @@ def run_config_audit(scan_id: Optional[int] = None) -> List[Finding]:
     Returns:
         List[Finding]: Consolidated list of configuration audit findings.
     """
+    # Imported here because extra_checks itself imports run_command from this module
+    from collectors import extra_checks
+
     all_findings: List[Finding] = []
 
     checks = [
+        ("Windows Updates & OS Support", extra_checks.check_windows_updates),
+        ("BitLocker", extra_checks.check_bitlocker),
+        ("System Hardening (UAC, Secure Boot, LSA)", extra_checks.check_system_hardening),
+        ("Network Shares", extra_checks.check_network_shares),
+        ("Startup Entries", extra_checks.check_startup_entries),
         ("Password Policy", check_password_policy),
         ("User Accounts", check_user_accounts),
         ("Firewall Profiles", check_firewall_status),

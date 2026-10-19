@@ -97,7 +97,7 @@ class WebAppTests(unittest.TestCase):
 
     # -- authentication ------------------------------------------------
     def test_protected_pages_redirect_to_login(self):
-        for path in ("/dashboard", "/findings", "/alerts", "/software", "/history", "/compare", "/report",
+        for path in ("/dashboard", "/findings", "/alerts", "/software", "/history", "/compare", "/report", "/frameworks",
                      "/findings/export.csv", "/api/summary", "/scan/status"):
             resp = self.client.get(path)
             self.assertEqual(resp.status_code, 302, path)
@@ -109,7 +109,7 @@ class WebAppTests(unittest.TestCase):
 
     def test_login_success_and_every_page_renders(self):
         self.assertEqual(self._login().status_code, 302)
-        for path in ("/dashboard", "/findings", "/alerts", "/software", "/history", "/compare", "/report"):
+        for path in ("/dashboard", "/findings", "/alerts", "/software", "/history", "/compare", "/report", "/frameworks"):
             resp = self.client.get(path)
             self.assertEqual(resp.status_code, 200, path)
             html = resp.get_data(as_text=True)

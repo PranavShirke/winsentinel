@@ -6,7 +6,7 @@
 [![Flask](https://img.shields.io/badge/Flask-3.0-green?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite-lightblue?logo=sqlite)](https://sqlite.org/)
 [![License](https://img.shields.io/badge/License-Academic-orange)](./LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-74%20Passing-brightgreen)](#running-tests)
+[![Tests](https://img.shields.io/badge/Tests-98%20Passing-brightgreen)](#running-tests)
 
 A Python-based Windows security posture analysis tool built as a micro-project for three academic cybersecurity subjects:
 **VAPT Lab** · **Security Information Management** · **Application Security**
@@ -58,6 +58,11 @@ WinSentinel audits a Windows machine's security posture by:
 | **CVE Lookup** | Queries NVD API v2 for CVEs on allowlisted software, with 24-hour SQLite caching |
 | **Risk Scoring** | NIST SP 800-30 Likelihood × Impact → severity band → posture score deduction |
 | **Web Dashboard** | "Ops console" Flask UI: posture gauge, risk heat strip, Chart.js charts, filterable findings, live scan pipeline |
+| **Extra hardening checks** | Windows Update recency and pending reboot, OS support status, BitLocker, UAC, Secure Boot, LSA protection, WDigest, auto-logon, custom network shares, startup/persistence entries |
+| **Risk register** | Mark findings Accepted / In progress / False positive with a justification; remembered across scans and reflected in an adjusted posture score |
+| **ATT&CK and CIS mapping** | Every finding and alert is tagged with MITRE ATT&CK techniques and CIS Controls v8 safeguards; `/frameworks` shows coverage |
+| **PDF and HTML reports** | A4 PDF (reportlab) and self-contained HTML with methodology, tags, decisions and limitations |
+| **Auto-scan** | Optional scheduled scans (`AUTO_SCAN_INTERVAL_MINUTES` in `.env`) |
 | **Scan Comparison** | Diff two scans to see new, resolved and still-open risks (drift detection) |
 | **CSV Export** | Export any scan's findings for spreadsheets or ticketing tools |
 | **Report Builder** | Self-contained HTML report with inline CSS and `@media print` for A4 printing |
@@ -147,7 +152,7 @@ WinSentinel/
 │   ├── generate_failed_logins.py   # Simulate Event Log 4625 entries
 │   └── load_sample_events.py       # Load fixture events into DB
 │
-├── tests/                          # Unit & integration tests (74 tests)
+├── tests/                          # Unit & integration tests (98 tests)
 │   ├── test_skeleton.py            # DB schema, user auth, config defaults
 │   ├── test_config_parsers.py      # Config audit parser coverage
 │   ├── test_bruteforce.py          # Brute-force detection logic
@@ -254,9 +259,12 @@ Open your browser at **[http://127.0.0.1:5000](http://127.0.0.1:5000)** to view 
 | **Alerts** | `/alerts` | Correlated brute-force and incident detections with source IP |
 | **Software & CVEs** | `/software` | Installed software registry inventory with NVD CVE flags |
 | **Scan History** | `/history` | All previous scans with posture score trend chart |
+| **Frameworks** | `/frameworks` | MITRE ATT&CK exposure and CIS Controls v8 coverage for the scan |
 | **Compare scans** | `/compare` | New / resolved / still-open findings between two completed scans, with score change |
 | **Findings CSV** | `/findings/export.csv` | Download all findings of a scan (formula-injection safe) |
-| **Report** | `/report` | Report preview + **Download HTML Report** button |
+| **Report** | `/report` | Report preview, **PDF** / HTML downloads, CSV export |
+
+**Interface:** press `Ctrl K` (or `/`) for the command palette to jump to any page or search findings; use the top-bar button to switch light and dark themes; on Findings use the chips, live search and sort, and the **Risk decision** button inside any open row.
 
 **Run new scan:** Click **"Run new scan"** from any page to start a background audit with live progress banner.
 
@@ -330,7 +338,7 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-Expected: **74 passed** in ~10 seconds.
+Expected: **98 passed** in ~20 seconds.
 
 ```
 tests/test_skeleton.py         4 tests   DB schema, user auth, config defaults

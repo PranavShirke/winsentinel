@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+{% from "_macros.html" import icon, sev_badge %}
+
+{% block title %}Frameworks{% endblock %}
+
+{% macro coverage(rows, empty_text) %}
+  {% if not rows %}
+    <div class="empty-state"><p>{{ empty_text }}</p></div>
+  {% else %}
+    {% for r in rows %}
+      {% set f = r.failed|length %}
+      {% set total = f + r.passed %}
+      <div class="cov-row">
+        <span class="cov-id">{{ r.id }}</span>
+        <span class="cov-name">{{ r.name }}</span>
+        <span>{% if f %}{{ sev_badge(r.worst) }}{% else %}<span class="badge badge-low">Covered</span>{% endif %}</span>
+        <div class="cov-bar" role="img" aria-label="{{ f }} failed, {{ r.passed }} passed">
+          {% if f %}<span class="f" data-weight="{{ f }}"></span>{% endif %}
+          {% if r.passed %}<span class="p" data-weight="{{ r.passed }}"></span>{% endif %}
+        </div>
+        <div class="cov-detail">
+          {% if f %}Failing: {{ r.failed|join('; ') }}.{% endif %}
+          {% if r.passed %} {{ r.passed }} related check{{ '' if r.passed == 1 else 's' }} passing.{% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-kicker">Threat &amp; control mapping</div>
+    <h1 class="page-title">Frameworks</h1>
+    <p class="page-subtitle">How this scan's results line up with MITRE ATT&amp;CK techniques (what an attacker could do) and CIS Controls v8 safeguards (what a defender should have). Accepted risks and false positives are excluded.</p>
+  </div>
+  {% if scan %}<div class="page-actions"><span class="scan-chip">SCAN #{{ scan.id }}</span></div>{% endif %}
+</div>
+
+{% if not scan %}
+  <div class="panel empty-state bracketed">
+    {{ icon('matrix', 'icon-lg') }}
+    <h3>No scan selected</h3>
+    <p>Run a scan to see technique and control coverage.</p>
+  </div>
+{% else %}
+  <div class="coverage-grid">
+    <section class="panel">
+      <div class="panel-title"><span>MITRE ATT&amp;CK exposure</span><span class="hint">{{ attack|length }} techniques</span></div>
+      {{ coverage(attack, 'No ATT&CK techniques are linked to this scan.') }}
+    </section>
+    <section class="panel">
+      <div class="panel-title"><span>CIS Controls v8 coverage</span><span class="hint">{{ cis|length }} safeguards</span></div>
+      {{ coverage(cis, 'No CIS safeguards are linked to this scan.') }}
+    </section>
+  </div>
+  <p class="text-faint text-sm">Mappings are rule-based guidance for triage, not a formal benchmark assessment.</p>
+{% endif %}
+{% endblock %}

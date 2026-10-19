@@ -54,6 +54,9 @@ class Config:
     LOGIN_MAX_FAILED_ATTEMPTS = 5
     LOGIN_LOCKOUT_MINUTES = 5
 
+    # Automatic scans while the server runs (minutes; 0 = disabled, minimum 15 when enabled)
+    AUTO_SCAN_INTERVAL_MINUTES = int(os.getenv("AUTO_SCAN_INTERVAL_MINUTES", "0") or 0)
+
     # Windows Security Log Analysis Defaults
     DEFAULT_LOG_ANALYSIS_DAYS = int(os.getenv("ANALYSIS_WINDOW_DAYS", "7"))
     BRUTE_FORCE_FAILURE_THRESHOLD = 5  # 5 failed logons (4625)

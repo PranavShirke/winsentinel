@@ -36,24 +36,30 @@
           <circle class="gauge-outer" cx="120" cy="120" r="112"/>
           <g transform="rotate(135 120 120)">
             <circle class="gauge-track" cx="120" cy="120" r="100" stroke-dasharray="471.2 628.3"/>
-            <circle class="gauge-value {{ score_tone(score) }}" cx="120" cy="120" r="100" stroke-dasharray="{{ ((471.2 * (score or 0)) / 100)|round(1) }} 628.3"/>
+            <circle class="gauge-value {{ score_tone(score) }}" data-gauge="{{ ((471.2 * (score or 0)) / 100)|round(1) }}" cx="120" cy="120" r="100" stroke-dasharray="{{ ((471.2 * (score or 0)) / 100)|round(1) }} 628.3"/>
             <circle class="gauge-ticks" cx="120" cy="120" r="100" stroke-dasharray="2.2 6.3"/>
           </g>
         </svg>
         <div class="gauge-center">
-          <div class="gauge-score {{ score_tone(score) }}">{{ score if score is not none else '--' }}</div>
+          <div class="gauge-score {{ score_tone(score) }}" {% if score is not none %}data-countup="{{ score }}"{% endif %}>{{ score if score is not none else '--' }}</div>
           <div class="gauge-of">OUT OF 100</div>
           <div class="gauge-grade {{ score_tone(score) }}">{{ score_grade(score) }}</div>
         </div>
       </div>
+      {% if score_delta is not none %}
+        <span class="delta-pill {% if score_delta > 0 %}up{% elif score_delta < 0 %}down{% else %}flat{% endif %}">{% if score_delta > 0 %}&uarr; +{{ score_delta }}{% elif score_delta < 0 %}&darr; {{ score_delta }}{% else %}&rarr; no change{% endif %} vs previous scan</span>
+      {% endif %}
+      {% if adjusted_score is not none and adjusted_score != score %}
+        <div class="adjusted-line">Adjusted for accepted risks: <b>{{ adjusted_score }}/100</b></div>
+      {% endif %}
       <p class="gauge-caption">100 minus penalties: Critical 15, High 8, Medium 3, Low 1.</p>
     </section>
 
     <div class="deck-side">
       <div class="stat-row">
-        <div class="stat stat-fail reveal"><div class="stat-label">Failed checks</div><div class="stat-value {% if summary.failed_findings %}has-items{% endif %}">{{ summary.failed_findings }}</div><div class="stat-sub">Need remediation</div></div>
-        <div class="stat stat-alert reveal"><div class="stat-label">Active alerts</div><div class="stat-value {% if summary.active_alerts %}has-items{% endif %}">{{ summary.active_alerts }}</div><div class="stat-sub">From Security log</div></div>
-        <div class="stat stat-sw reveal"><div class="stat-label">Vulnerable apps</div><div class="stat-value {% if summary.vulnerable_software %}has-items{% endif %}">{{ summary.vulnerable_software }}</div><div class="stat-sub">Of {{ summary.software_total }} inventoried</div></div>
+        <div class="stat stat-fail reveal"><div class="stat-label">Failed checks</div><div class="stat-value {% if summary.failed_findings %}has-items{% endif %}" data-countup="{{ summary.failed_findings }}">{{ summary.failed_findings }}</div><div class="stat-sub">Need remediation</div></div>
+        <div class="stat stat-alert reveal"><div class="stat-label">Active alerts</div><div class="stat-value {% if summary.active_alerts %}has-items{% endif %}" data-countup="{{ summary.active_alerts }}">{{ summary.active_alerts }}</div><div class="stat-sub">From Security log</div></div>
+        <div class="stat stat-sw reveal"><div class="stat-label">Vulnerable apps</div><div class="stat-value {% if summary.vulnerable_software %}has-items{% endif %}" data-countup="{{ summary.vulnerable_software }}">{{ summary.vulnerable_software }}</div><div class="stat-sub">Of {{ summary.software_total }} inventoried</div></div>
       </div>
 
       <section class="panel heat reveal" aria-label="Failed findings by severity">
@@ -74,6 +80,13 @@
           <li><span class="dot bg-low"></span>Low <strong>{{ low }}</strong></li>
           <li><span class="dot bg-error"></span>Errors <strong>{{ sev.get('Error', 0) }}</strong></li>
         </ul>
+        <div class="register-strip" aria-label="Risk register">
+          <span>Risk register:</span>
+          <span>Open <strong>{{ register.open }}</strong></span>
+          <span>In progress <strong>{{ register.in_progress }}</strong></span>
+          <span>Accepted <strong>{{ register.accepted }}</strong></span>
+          <span>False positive <strong>{{ register.false_positive }}</strong></span>
+        </div>
       </section>
     </div>
   </div>

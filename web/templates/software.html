@@ -50,12 +50,14 @@
   </section>
 
   <section class="panel panel-flush">
-    <div class="panel-title"><span>Installed software inventory</span><span class="hint">{{ software_list|length }} applications</span></div>
+    <div class="panel-title"><span>Installed software inventory</span>
+      <span><label class="sr-only" for="sw-filter">Filter software</label><input id="sw-filter" type="search" class="input-control compact" placeholder="Filter by name or publisher" data-filter-rows="#software-table tbody tr" autocomplete="off"></span>
+    </div>
     {% if not software_list %}
       <div class="empty-state"><p>No installed software entries were found in the registry.</p></div>
     {% else %}
       <div class="table-responsive">
-        <table class="table">
+        <table class="table" id="software-table">
           <thead><tr><th>Application</th><th>Version</th><th>Publisher</th></tr></thead>
           <tbody>
             {% for s in software_list %}

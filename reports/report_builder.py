@@ -12,13 +12,11 @@ Usage (from views.py):
 """
 
 from typing import Any, Dict, List, Optional
-from db.database import (
-    get_scan_by_id,
-    get_findings_by_scan_id,
-    get_alerts_by_scan_id,
-    get_software_by_scan_id,
-    get_scan_summary_counts,
-)
+from reports.report_data import collect_report_data
+from reports.pdf_report import LIMITATIONS
+from risk.scoring import get_scoring_methodology_doc
+
+_REGISTER_LABELS = {"open": "Open", "in_progress": "In progress", "accepted": "Accepted risk", "false_positive": "False positive"}
 
 
 # ---------------------------------------------------------------------------
@@ -193,12 +191,26 @@ def _build_findings_section(findings: List[Dict]) -> str:
         if remediation and f.get("status") != "pass":
             remed_html = f'<div class="remediation"><strong>Remediation:</strong> {remediation}</div>'
 
+        fw = f.get("frameworks") or {}
+        tag_bits = []
+        if fw.get("attack"):
+            tag_bits.append("ATT&amp;CK " + ", ".join(_esc(t["id"]) for t in fw["attack"]))
+        if fw.get("cis"):
+            tag_bits.append("CIS v8 " + ", ".join(_esc(t["id"]) for t in fw["cis"]))
+        tags_html = f'<div class="evidence">{" | ".join(tag_bits)}</div>' if tag_bits else ""
+        reg_html = ""
+        if f.get("register_status", "open") != "open":
+            reg_html = (f'<div class="remediation"><strong>Risk register: {_esc(_REGISTER_LABELS.get(f["register_status"], ""))}</strong>'
+                        f' ({_esc(f.get("register_by") or "n/a")}, {_esc(f.get("register_at", ""))}): {_esc(f.get("register_note", ""))}</div>')
+
         rows += f"""
         <tr>
           <td>{sev_badge}</td>
           <td><strong>{_esc(f.get("title",""))}</strong>
               <div class="evidence">{evidence}</div>
               {remed_html}
+              {tags_html}
+              {reg_html}
           </td>
           <td>{_esc(f.get("module","")).upper()}</td>
           <td><strong>{_esc(risk)}</strong><br><small>L:{_esc(likelihood)} &times; I:{_esc(impact)}</small></td>
@@ -311,14 +323,19 @@ def build_html_report(scan_id: int) -> str:
     Returns:
         str: Complete standalone HTML document as a UTF-8 string.
     """
-    scan = get_scan_by_id(scan_id)
-    if not scan:
+    data = collect_report_data(scan_id)
+    if not data:
         return "<html><body><h1>Error: Scan Not Found</h1></body></html>"
 
-    findings = get_findings_by_scan_id(scan_id)
-    alerts = get_alerts_by_scan_id(scan_id)
-    software = get_software_by_scan_id(scan_id)
-    summary = get_scan_summary_counts(scan_id)
+    scan, findings, alerts = data["scan"], data["findings"], data["alerts"]
+    software, summary = data["software"], data["summary"]
+    method = get_scoring_methodology_doc()
+    method_html = (
+        "<h2>Methodology</h2>"
+        f"<p>Framework: {_esc(method['framework'])}.<br>{_esc(method['formula'])}.<br>{_esc(method['posture_formula'])}.</p>"
+        f"<p>Adjusted posture score (excluding accepted risks and false positives): <strong>{_esc(data['adjusted_score'])}/100</strong>.</p>"
+    )
+    limitations_html = "<h2>Limitations</h2><ul>" + "".join(f"<li>{_esc(x)}</li>" for x in LIMITATIONS) + "</ul>"
 
     hostname = _esc(scan.get("hostname", "Unknown"))
     started = _esc(str(scan.get("started_at", ""))[:19])
@@ -364,9 +381,11 @@ def build_html_report(scan_id: int) -> str:
   </div>
 
   {exec_summary_html}
+  {method_html}
   {findings_html}
   {alerts_html}
   {software_html}
+  {limitations_html}
 
   <!-- Scope & Ethics Statement -->
   <h2>Scope &amp; Legal Ethics Statement</h2>

@@ -200,6 +200,9 @@ def cmd_serve(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
     app = create_app()
+    from web.scheduler import start_scheduler_if_enabled
+    if start_scheduler_if_enabled():
+        print(f"[*] Auto-scan: every {max(15, cfg.AUTO_SCAN_INTERVAL_MINUTES)} minutes")
 
     print("=" * 60)
     print(f"[*] Starting {cfg.PROJECT_NAME} Web Dashboard")

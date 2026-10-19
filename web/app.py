@@ -13,6 +13,7 @@ from flask import Flask, render_template
 from flask_wtf.csrf import CSRFProtect
 
 from config import get_config
+from db.database import init_db
 from web.security import apply_security_headers
 from web.auth import auth_bp
 from web.views import views_bp
@@ -26,6 +27,7 @@ def create_app() -> Flask:
         Flask: Fully configured application.
     """
     cfg = get_config()
+    init_db()  # idempotent: creates new tables when upgrading an existing database
     app = Flask(__name__)
 
     # Core Security Settings

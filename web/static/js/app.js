@@ -9,6 +9,10 @@
 document.addEventListener("DOMContentLoaded", function () {
   initFindingsTable();
   initHeatBar();
+  initPaletteButtons();
+  initGaugeAndCounters();
+  initRowFilters();
+  showPostReloadToast();
   initScanControls();
   initDashboardCharts();
   initHistoryTrendChart();
@@ -44,12 +48,71 @@ function initFindingsTable() {
   });
 }
 
-/** 2. Proportional widths for the severity heat strip. */
+/** 2. Proportional widths for the severity heat strip and framework coverage bars. */
 function initHeatBar() {
-  document.querySelectorAll(".heat-seg").forEach(function (seg) {
+  document.querySelectorAll("[data-weight]").forEach(function (seg) {
     seg.style.flexGrow = seg.getAttribute("data-weight") || "1";
     seg.style.flexBasis = "0";
   });
+}
+
+/** Buttons that open the command palette (Alpine listens for this window event). */
+function initPaletteButtons() {
+  document.querySelectorAll("[data-open-palette]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      window.dispatchEvent(new CustomEvent("open-palette"));
+    });
+  });
+}
+
+/** Animate the posture gauge sweep and count-up numbers on the dashboard. */
+function initGaugeAndCounters() {
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce) return;
+
+  var gauge = document.querySelector("[data-gauge]");
+  if (gauge) {
+    var target = gauge.getAttribute("data-gauge");
+    gauge.style.strokeDasharray = "0 628.3";
+    gauge.style.transition = "stroke-dasharray 1.1s cubic-bezier(0.2, 0.7, 0.2, 1)";
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { gauge.style.strokeDasharray = target + " 628.3"; });
+    });
+  }
+
+  document.querySelectorAll("[data-countup]").forEach(function (el) {
+    var end = parseInt(el.getAttribute("data-countup"), 10);
+    if (isNaN(end) || end === 0) return;
+    var start = null;
+    function step(ts) {
+      if (start === null) start = ts;
+      var p = Math.min(1, (ts - start) / 900);
+      el.textContent = String(Math.round(end * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) requestAnimationFrame(step);
+    }
+    el.textContent = "0";
+    requestAnimationFrame(step);
+  });
+}
+
+/** Live text filter for plain tables: <input data-filter-rows="css selector of rows">. */
+function initRowFilters() {
+  document.querySelectorAll("[data-filter-rows]").forEach(function (input) {
+    var rows = document.querySelectorAll(input.getAttribute("data-filter-rows"));
+    input.addEventListener("input", function () {
+      var q = input.value.trim().toLowerCase();
+      rows.forEach(function (row) {
+        row.style.display = !q || row.textContent.toLowerCase().indexOf(q) !== -1 ? "" : "none";
+      });
+    });
+  });
+}
+
+/** Show a toast queued before a page reload (for example after a scan completes). */
+function showPostReloadToast() {
+  var msg = null;
+  try { msg = sessionStorage.getItem("ws-toast"); sessionStorage.removeItem("ws-toast"); } catch (e) { return; }
+  if (msg && window.wsToast) setTimeout(function () { window.wsToast(msg, "success"); }, 600);
 }
 
 /** 3. Scan trigger, pipeline stepper and status polling. */
@@ -111,6 +174,7 @@ function initScanControls() {
             if (barFill) barFill.style.width = "100%";
             if (percent) percent.textContent = "100%";
             if (stepText) stepText.textContent = "Audit complete. Loading results...";
+            try { sessionStorage.setItem("ws-toast", "Scan complete. Results updated."); } catch (e) { /* ignore */ }
             setTimeout(function () { window.location.reload(); }, 600);
           }
         } else if (data.status === "failed") {

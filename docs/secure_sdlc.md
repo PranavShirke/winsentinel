@@ -31,7 +31,8 @@ How security is built into WinSentinel at every phase, and where the evidence is
 - Unit tests for parsers, scoring, brute-force correlation and NVD matching.
 - End-to-end web tests: authentication, CSRF, open redirect, headers, CSV, comparison (`tests/test_web.py`).
 - Regression tests for defects found on a real scan (for example legacy "Edge" CVEs wrongly attributed to Chromium Edge).
-- Run all: `py -m pytest tests/ -v` (currently 69 tests).
+- Run all: `py -m pytest tests/ -v` (currently 98 tests).
+- Interactive UI behaviour (filters, risk-decision dialog, command palette, theme switch) was verified manually in a real browser with the console open, because the strict CSP and the CSP build of Alpine.js only fail at run time in the browser; server-side behaviour behind each interaction is covered by `tests/test_features.py`.
 - Manual verification: run a real scan on the host and review the findings for false positives (done during development and documented in the commit history).
 - Dependency hygiene: `pip install pip-audit` then `pip-audit -r requirements.txt` before every release; pin and review new dependencies.
 

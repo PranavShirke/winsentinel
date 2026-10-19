@@ -8,12 +8,13 @@
   <div>
     <div class="page-kicker">Deliverable</div>
     <h1 class="page-title">Compliance &amp; risk report</h1>
-    <p class="page-subtitle">A self-contained HTML report with a print stylesheet. Use your browser's Print &rarr; Save as PDF for an A4 copy.</p>
+    <p class="page-subtitle">Download an A4 PDF, or a self-contained HTML report with a print stylesheet. Both include methodology, ATT&amp;CK / CIS tags, risk-register decisions and limitations.</p>
   </div>
   {% if scan %}
     <div class="page-actions">
       <a href="{{ url_for('views.export_findings_csv', scan_id=scan.id) }}" class="btn btn-secondary">{{ icon('download', 'icon-sm') }} CSV</a>
-      <a href="{{ url_for('views.download_report', scan_id=scan.id) }}" class="btn btn-primary">{{ icon('download', 'icon-sm') }} Download HTML report</a>
+      <a href="{{ url_for('views.download_report', scan_id=scan.id) }}" class="btn btn-secondary">{{ icon('download', 'icon-sm') }} HTML</a>
+      <a href="{{ url_for('views.download_report_pdf', scan_id=scan.id) }}" class="btn btn-primary">{{ icon('download', 'icon-sm') }} Download PDF report</a>
     </div>
   {% endif %}
 </div>

@@ -32,7 +32,7 @@
     {% else %}
       <div class="table-responsive">
         <table class="table">
-          <thead><tr><th>Time</th><th>Severity</th><th>Incident</th><th>Account</th><th>Source IP</th><th>Events</th><th>Details</th></tr></thead>
+          <thead><tr><th>Time</th><th>Severity</th><th>Incident</th><th>Account</th><th>Source IP</th><th>Events</th><th>Details</th><th>ATT&amp;CK</th></tr></thead>
           <tbody>
             {% for a in alerts %}
               <tr class="{% if a.alert_type == 'Possible Compromise' %}highlight-compromise{% elif a.alert_type == 'Brute Force Attack' %}highlight-bruteforce{% endif %}">
@@ -43,6 +43,7 @@
                 <td><code>{{ a.source_ip }}</code></td>
                 <td class="mono fw-600">{{ a.count }}</td>
                 <td class="text-dim">{{ a.details }}</td>
+                <td>{% for t in a.frameworks.attack %}<span class="tag tag-attack" title="{{ t.name }}">{{ t.id }}</span> {% endfor %}</td>
               </tr>
             {% endfor %}
           </tbody>

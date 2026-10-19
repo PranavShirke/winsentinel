@@ -40,12 +40,21 @@ from db.database import (
     get_software_by_scan_id,
     get_scan_summary_counts,
 )
+from db.database import REGISTER_STATUSES, set_finding_status
+from reports.report_data import (
+    EXCLUDED_FROM_ADJUSTED,
+    adjusted_posture_score,
+    enrich_findings,
+    register_counts,
+)
+from risk.frameworks import map_frameworks
 from web.auth import login_required
 from web.security import (
     validate_scan_id,
     validate_severity,
     validate_module,
     validate_status,
+    validate_register,
     sanitize_search_query,
 )
 from web.scanner import get_scan_manager
@@ -82,9 +91,13 @@ def inject_global_template_context():
     hostname = os.environ.get("COMPUTERNAME", "localhost")
     latest = get_latest_completed_scan()
     last_time = latest["started_at"][:19].replace("T", " ") if latest and latest.get("started_at") else None
+    from web.scheduler import get_scheduler
+    sched = get_scheduler()
     return {
         "current_hostname": hostname,
         "last_scan_time": last_time,
+        "auto_scan_minutes": sched.interval_seconds // 60 if sched else 0,
+        "auto_scan_next": int(sched.next_run) if sched and sched.next_run else 0,
     }
 
 
@@ -106,10 +119,22 @@ def dashboard():
     scan, summary = resolve_active_scan(scan_id_param)
 
     top_risks = []
+    adjusted_score = None
+    score_delta = None
+    register = {"open": 0, "in_progress": 0, "accepted": 0, "false_positive": 0}
     if scan:
-        # Fetch top 5 failed findings ordered by risk_score desc
-        all_failed = get_findings_by_scan_id(scan["id"], status="fail")
-        top_risks = all_failed[:5]
+        previous = [s for s in get_all_scans(limit=50)
+                    if s["status"] == "completed" and s["id"] < scan["id"] and s["posture_score"] is not None]
+        if previous and scan.get("posture_score") is not None:
+            score_delta = scan["posture_score"] - previous[0]["posture_score"]
+        enriched = enrich_findings(get_findings_by_scan_id(scan["id"]))
+        adjusted_score = adjusted_posture_score(enriched)
+        register = register_counts(enriched)
+        # Top 5 risks still needing action (decided-away items are excluded)
+        top_risks = [
+            f for f in enriched
+            if f["status"] == "fail" and f["register_status"] not in EXCLUDED_FROM_ADJUSTED
+        ][:5]
 
     return render_template(
         "dashboard.html",
@@ -117,6 +142,9 @@ def dashboard():
         scan=scan,
         summary=summary,
         top_risks=top_risks,
+        adjusted_score=adjusted_score,
+        score_delta=score_delta,
+        register=register,
     )
 
 
@@ -132,15 +160,18 @@ def findings():
     selected_module = validate_module(request.args.get("module"))
     selected_status = validate_status(request.args.get("status"))
     selected_search = sanitize_search_query(request.args.get("search"))
+    selected_register = validate_register(request.args.get("register"))
 
     if scan:
-        findings_list = get_findings_by_scan_id(
+        findings_list = enrich_findings(get_findings_by_scan_id(
             scan_id=scan["id"],
             severity=selected_severity,
             module=selected_module,
             status=selected_status,
             search=selected_search,
-        )
+        ))
+        if selected_register:
+            findings_list = [f for f in findings_list if f["register_status"] == selected_register]
 
     return render_template(
         "findings.html",
@@ -151,6 +182,7 @@ def findings():
         selected_module=selected_module,
         selected_status=selected_status,
         selected_search=selected_search,
+        selected_register=selected_register,
     )
 
 
@@ -163,7 +195,7 @@ def alerts():
 
     alerts_list = []
     if scan:
-        alerts_list = get_alerts_by_scan_id(scan["id"])
+        alerts_list = [dict(a, frameworks=map_frameworks(a["alert_type"])) for a in get_alerts_by_scan_id(scan["id"])]
 
     return render_template(
         "alerts.html",
@@ -299,9 +331,116 @@ def compare():
     )
 
 
+@views_bp.route("/frameworks")
+@login_required
+def frameworks():
+    """Show how this scan's findings map onto MITRE ATT&CK techniques and CIS Controls v8 safeguards."""
+    scan, _ = resolve_active_scan(request.args.get("scan_id"))
+    attack: Dict[str, Dict[str, Any]] = {}
+    cis: Dict[str, Dict[str, Any]] = {}
+    rank = {"Critical": 5, "High": 4, "Medium": 3, "Low": 2}
+
+    def add(bucket, tag, finding):
+        row = bucket.setdefault(tag["id"], {"id": tag["id"], "name": tag["name"], "failed": [], "passed": 0, "worst": ""})
+        if finding["status"] == "fail":
+            row["failed"].append(finding["title"])
+            if rank.get(finding["severity"], 0) > rank.get(row["worst"], 0):
+                row["worst"] = finding["severity"]
+        elif finding["status"] == "pass":
+            row["passed"] += 1
+
+    if scan:
+        for f in enrich_findings(get_findings_by_scan_id(scan["id"])):
+            if f["register_status"] in EXCLUDED_FROM_ADJUSTED:
+                continue
+            for tag in f["frameworks"]["attack"]:
+                add(attack, tag, f)
+            for tag in f["frameworks"]["cis"]:
+                add(cis, tag, f)
+
+    def ordered(bucket):
+        return sorted(bucket.values(), key=lambda r: (-rank.get(r["worst"], 0), -len(r["failed"]), r["id"]))
+
+    return render_template(
+        "frameworks.html",
+        active_page="frameworks",
+        scan=scan,
+        attack=ordered(attack),
+        cis=ordered(cis),
+    )
+
+
+@views_bp.route("/api/search")
+@login_required
+def api_search():
+    """Command-palette search: findings of the active scan matching a short text query."""
+    scan, _ = resolve_active_scan(request.args.get("scan_id"))
+    query = sanitize_search_query(request.args.get("q"), max_len=60)
+    if not scan or not query:
+        return jsonify({"results": []})
+    rows = get_findings_by_scan_id(scan["id"], search=query)[:8]
+    return jsonify({"results": [
+        {"title": r["title"], "severity": r["severity"], "module": r["module"], "status": r["status"]} for r in rows
+    ]})
+
+
+@views_bp.route("/report/download.pdf")
+@login_required
+def download_report_pdf():
+    """Generate and download the A4 PDF report for a scan."""
+    scan, _ = resolve_active_scan(request.args.get("scan_id"))
+    if not scan:
+        return "No scan available to generate report", 404
+
+    from reports.pdf_report import build_pdf_report
+    pdf = build_pdf_report(scan["id"])
+    safe_host = re.sub(r"[^A-Za-z0-9_.-]", "_", scan["hostname"])[:40]
+    return Response(
+        pdf,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=WinSentinel_Audit_Report_{safe_host}_Scan_{scan['id']}.pdf"},
+    )
+
+
 # -------------------------------------------------------------------------
 # API Endpoints (Background Scan & JSON Feeds)
 # -------------------------------------------------------------------------
+
+@views_bp.route("/api/findings/status", methods=["POST"])
+@login_required
+def update_finding_status():
+    """
+    Record a risk-register decision for a finding (accept, mark false positive, in progress, reopen).
+
+    Expects JSON: {scan_id, module, title, status, note}. The finding must exist in the given scan,
+    and accepted / false_positive decisions require a justification of at least 8 characters.
+    """
+    payload = request.get_json(silent=True) or {}
+    scan_id = validate_scan_id(payload.get("scan_id"))
+    module = validate_module(payload.get("module"))
+    title = payload.get("title")
+    status = validate_register(payload.get("status"))
+    note = str(payload.get("note") or "").strip()[:500]
+
+    if not (scan_id and module and status and isinstance(title, str)):
+        return jsonify({"status": "error", "message": "Invalid request."}), 400
+    if status not in REGISTER_STATUSES:
+        return jsonify({"status": "error", "message": "Invalid status."}), 400
+    known = {f["title"] for f in get_findings_by_scan_id(scan_id, module=module)}
+    if title not in known:
+        return jsonify({"status": "error", "message": "Finding not found in this scan."}), 404
+    if status in EXCLUDED_FROM_ADJUSTED and len(note) < 8:
+        return jsonify({"status": "error", "message": "Please give a justification (at least 8 characters)."}), 422
+
+    set_finding_status(module, title, status, note, updated_by=session.get("username", ""))
+    findings = enrich_findings(get_findings_by_scan_id(scan_id))
+    return jsonify({
+        "status": "ok",
+        "register_status": status,
+        "adjusted_score": adjusted_posture_score(findings),
+        "register": register_counts(findings),
+    })
+
 
 @views_bp.route("/scan/start", methods=["POST"])
 @login_required
@@ -373,7 +512,16 @@ def api_summary():
             for f in failed[:5]
         ]
 
+    adjusted = None
+    register = {}
+    if scan:
+        enriched = enrich_findings(get_findings_by_scan_id(scan["id"]))
+        adjusted = adjusted_posture_score(enriched)
+        register = register_counts(enriched)
+
     return jsonify({
+        "adjusted_score": adjusted,
+        "register": register,
         "scan_id": scan["id"] if scan else None,
         "hostname": scan["hostname"] if scan else os.environ.get("COMPUTERNAME", "localhost"),
         "posture_score": scan["posture_score"] if scan else None,
