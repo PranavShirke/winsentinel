@@ -9,7 +9,7 @@
     <p class="page-subtitle">Security check evaluations across Configuration, Event Logs, and Software</p>
   </div>
   {% if scan %}
-    <span class="badge badge-info">Scan #{{ scan.id }} &bull; {{ findings|length }} check(s) listed</span>
+    <div class="page-meta"><span class="live-dot"></span> Scan #{{ scan.id }} <span>•</span> {{ findings|length }} checks listed</div>
   {% endif %}
 </div>
 
@@ -19,6 +19,12 @@
     <p>Please execute a scan or select a previous scan from Scan History.</p>
   </div>
 {% else %}
+  <div class="findings-overview">
+    <div class="overview-card overview-total"><span class="overview-icon">⌁</span><div><strong>{{ findings|length }}</strong><small>Total checks</small></div></div>
+    <div class="overview-card overview-critical"><span class="overview-icon">!</span><div><strong>{{ findings|selectattr('severity', 'equalto', 'Critical')|list|length }}</strong><small>Critical risk</small></div></div>
+    <div class="overview-card overview-failed"><span class="overview-icon">×</span><div><strong>{{ findings|selectattr('status', 'equalto', 'fail')|list|length }}</strong><small>Needs attention</small></div></div>
+    <div class="overview-card overview-passed"><span class="overview-icon">✓</span><div><strong>{{ findings|selectattr('status', 'equalto', 'pass')|list|length }}</strong><small>Passed checks</small></div></div>
+  </div>
   <!-- Filter Bar -->
   <form method="GET" action="{{ url_for('views.findings') }}" class="filter-bar">
     {% if request.args.get('scan_id') %}
@@ -27,32 +33,32 @@
 
     <div class="filter-group">
       <label for="filter-severity">Severity:</label>
-      <select id="filter-severity" name="severity" class="input-control">
+      <div class="select-wrap"><select id="filter-severity" name="severity" class="input-control">
         <option value="">All Severities</option>
         {% for s in ['Critical', 'High', 'Medium', 'Low', 'Info', 'Error'] %}
           <option value="{{ s }}" {% if selected_severity == s %}selected{% endif %}>{{ s }}</option>
         {% endfor %}
-      </select>
+      </select></div>
     </div>
 
     <div class="filter-group">
       <label for="filter-module">Module:</label>
-      <select id="filter-module" name="module" class="input-control">
+      <div class="select-wrap"><select id="filter-module" name="module" class="input-control">
         <option value="">All Modules</option>
         <option value="config" {% if selected_module == 'config' %}selected{% endif %}>Configuration</option>
         <option value="logs" {% if selected_module == 'logs' %}selected{% endif %}>Event Logs</option>
         <option value="software" {% if selected_module == 'software' %}selected{% endif %}>Software CVEs</option>
-      </select>
+      </select></div>
     </div>
 
     <div class="filter-group">
       <label for="filter-status">Status:</label>
-      <select id="filter-status" name="status" class="input-control">
+      <div class="select-wrap"><select id="filter-status" name="status" class="input-control">
         <option value="">All Statuses</option>
         <option value="fail" {% if selected_status == 'fail' %}selected{% endif %}>Fail</option>
         <option value="pass" {% if selected_status == 'pass' %}selected{% endif %}>Pass</option>
         <option value="error" {% if selected_status == 'error' %}selected{% endif %}>Error</option>
-      </select>
+      </select></div>
     </div>
 
     <div class="filter-group">
@@ -67,12 +73,16 @@
       >
     </div>
 
-    <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+    <button type="submit" class="btn btn-primary btn-sm">Apply filters</button>
     <a href="{{ url_for('views.findings', scan_id=scan.id) }}" class="btn btn-secondary btn-sm">Reset</a>
   </form>
 
   <!-- Findings Table -->
   <div class="panel">
+    <div class="table-toolbar">
+      <div><strong>Security control results</strong><span>Click a row to inspect evidence and remediation</span></div>
+      <div class="status-legend"><span class="status-pill status-fail">FAIL = risk found</span><span class="status-pill status-pass">PASS = control healthy</span></div>
+    </div>
     {% if not findings %}
       <div class="empty-state">
         <p>No findings matched the selected filter criteria.</p>

@@ -20,37 +20,37 @@
       <ul class="nav-links">
         <li class="nav-item">
           <a href="{{ url_for('views.dashboard') }}" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">
-            Dashboard
+            <span class="nav-icon">◫</span> Dashboard
           </a>
         </li>
         <li class="nav-item">
           <a href="{{ url_for('views.findings') }}" class="nav-link {% if active_page == 'findings' %}active{% endif %}">
-            Findings
+            <span class="nav-icon">⌁</span> Findings
           </a>
         </li>
         <li class="nav-item">
           <a href="{{ url_for('views.alerts') }}" class="nav-link {% if active_page == 'alerts' %}active{% endif %}">
-            Alerts
+            <span class="nav-icon">!</span> Alerts
           </a>
         </li>
         <li class="nav-item">
           <a href="{{ url_for('views.software') }}" class="nav-link {% if active_page == 'software' %}active{% endif %}">
-            Software and CVEs
+            <span class="nav-icon">◇</span> Software and CVEs
           </a>
         </li>
         <li class="nav-item">
           <a href="{{ url_for('views.history') }}" class="nav-link {% if active_page == 'history' %}active{% endif %}">
-            Scan History
+            <span class="nav-icon">◷</span> Scan History
           </a>
         </li>
         <li class="nav-item">
           <a href="{{ url_for('views.report_preview') }}" class="nav-link {% if active_page == 'report' %}active{% endif %}">
-            Report
+            <span class="nav-icon">▤</span> Report
           </a>
         </li>
         <li class="nav-item nav-item-logout">
           <a href="{{ url_for('auth.logout') }}" class="nav-link">
-            Logout
+            <span class="nav-icon">↪</span> Logout
           </a>
         </li>
       </ul>
