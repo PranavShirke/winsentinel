@@ -51,8 +51,9 @@ function initScanControls() {
   const progressBarFill = document.getElementById("progress-bar-fill");
   const progressPercent = document.getElementById("progress-percent");
 
-  // Check initial scan state on load
-  checkScanStatus();
+  // Only resume polling when a scan is actually running. A completed status
+  // belongs to the last scan and must not trigger a reload on every page load.
+  checkScanStatus(false);
 
   if (scanBtn) {
     scanBtn.addEventListener("click", function (e) {
@@ -102,11 +103,11 @@ function initScanControls() {
   function pollStatus() {
     if (pollInterval) clearInterval(pollInterval);
     pollInterval = setInterval(function () {
-      checkScanStatus();
+      checkScanStatus(true);
     }, 1000);
   }
 
-  function checkScanStatus() {
+  function checkScanStatus(allowCompletionReload) {
     fetch("/scan/status")
       .then(function (res) {
         return res.json();
@@ -124,12 +125,14 @@ function initScanControls() {
             clearInterval(pollInterval);
             pollInterval = null;
           }
-          if (progressBarFill) progressBarFill.style.width = "100%";
-          if (progressPercent) progressPercent.textContent = "100%";
-          if (progressStep) progressStep.textContent = "Audit Completed! Refreshing results...";
-          setTimeout(function () {
-            window.location.reload();
-          }, 1200);
+          if (allowCompletionReload) {
+            if (progressBarFill) progressBarFill.style.width = "100%";
+            if (progressPercent) progressPercent.textContent = "100%";
+            if (progressStep) progressStep.textContent = "Audit completed. Updating results...";
+            setTimeout(function () {
+              window.location.reload();
+            }, 700);
+          }
         } else if (data.status === "failed") {
           if (pollInterval) {
             clearInterval(pollInterval);
@@ -137,6 +140,9 @@ function initScanControls() {
           }
           if (progressStep) progressStep.textContent = "Scan Failed: " + (data.error || "Unknown error");
           if (scanBtn) scanBtn.disabled = false;
+          if (!allowCompletionReload && progressBanner) {
+            progressBanner.classList.remove("active");
+          }
         }
       })
       .catch(function (err) {
