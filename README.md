@@ -6,7 +6,7 @@
 [![Flask](https://img.shields.io/badge/Flask-3.0-green?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite-lightblue?logo=sqlite)](https://sqlite.org/)
 [![License](https://img.shields.io/badge/License-Academic-orange)](./LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-46%20Passing-brightgreen)](#running-tests)
+[![Tests](https://img.shields.io/badge/Tests-67%20Passing-brightgreen)](#running-tests)
 
 A Python-based Windows security posture analysis tool built as a micro-project for three academic cybersecurity subjects:
 **VAPT Lab** · **Security Information Management** · **Application Security**
@@ -57,7 +57,9 @@ WinSentinel audits a Windows machine's security posture by:
 | **Software Inventory** | Enumerates HKLM and HKCU registry hives for all installed applications |
 | **CVE Lookup** | Queries NVD API v2 for CVEs on allowlisted software, with 24-hour SQLite caching |
 | **Risk Scoring** | NIST SP 800-30 Likelihood × Impact → severity band → posture score deduction |
-| **Web Dashboard** | Dark SOC-theme Flask UI with Chart.js charts, filterable findings table, real-time scan polling |
+| **Web Dashboard** | "Ops console" Flask UI: posture gauge, risk heat strip, Chart.js charts, filterable findings, live scan pipeline |
+| **Scan Comparison** | Diff two scans to see new, resolved and still-open risks (drift detection) |
+| **CSV Export** | Export any scan's findings for spreadsheets or ticketing tools |
 | **Report Builder** | Self-contained HTML report with inline CSS and `@media print` for A4 printing |
 | **CLI Interface** | `scan`, `serve`, `demo`, `set-password` subcommands |
 
@@ -145,7 +147,7 @@ WinSentinel/
 │   ├── generate_failed_logins.py   # Simulate Event Log 4625 entries
 │   └── load_sample_events.py       # Load fixture events into DB
 │
-├── tests/                          # Unit & integration tests (46 tests)
+├── tests/                          # Unit & integration tests (67 tests)
 │   ├── test_skeleton.py            # DB schema, user auth, config defaults
 │   ├── test_config_parsers.py      # Config audit parser coverage
 │   ├── test_bruteforce.py          # Brute-force detection logic
@@ -190,7 +192,11 @@ pip install -r requirements.txt
 copy .env.example .env
 ```
 
-Open `.env` and set your `SECRET_KEY`. Generate a strong one with:
+Open `.env` and set your `SECRET_KEY` (if left empty a random per-run key is used and you are signed out on restart). The admin password must be at least 12 characters.
+
+> On machines where `python` is only the Microsoft Store stub, use `py` instead (for example `py main.py serve`).
+
+Generate a strong key with:
 
 ```powershell
 python -c "import secrets; print(secrets.token_hex(32))"
@@ -243,11 +249,13 @@ Open your browser at **[http://127.0.0.1:5000](http://127.0.0.1:5000)** to view 
 | Page | URL | Description |
 |---|---|---|
 | **Login** | `/login` | Username + password with brute-force lockout |
-| **Dashboard** | `/` | Posture score ring, Chart.js severity / module / logon charts, top 5 risks |
+| **Dashboard** | `/dashboard` | Posture gauge, risk heat strip, severity / module / failed-logon charts, top 5 risks |
 | **Findings** | `/findings` | All audit checks with severity / module / status / text search filters; click any row to expand evidence + remediation |
 | **Alerts** | `/alerts` | Correlated brute-force and incident detections with source IP |
 | **Software & CVEs** | `/software` | Installed software registry inventory with NVD CVE flags |
 | **Scan History** | `/history` | All previous scans with posture score trend chart |
+| **Compare scans** | `/compare` | New / resolved / still-open findings between two completed scans, with score change |
+| **Findings CSV** | `/findings/export.csv` | Download all findings of a scan (formula-injection safe) |
 | **Report** | `/report` | Report preview + **Download HTML Report** button |
 
 **Run new scan:** Click **"Run new scan"** from any page to start a background audit with live progress banner.
@@ -304,7 +312,7 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-Expected: **46 passed** in ~3–5 seconds.
+Expected: **67 passed** in ~10 seconds.
 
 ```
 tests/test_skeleton.py         4 tests   DB schema, user auth, config defaults
@@ -313,6 +321,7 @@ tests/test_bruteforce.py       7 tests   Brute-force detection logic
 tests/test_scoring.py          7 tests   Risk matrix, penalties, remediation
 tests/test_software_nvd.py     8 tests   NVD client, caching, CVSS mapping
 tests/test_validation.py       6 tests   Flask headers, CSRF, login throttle
+tests/test_web.py             21 tests   End-to-end web flow, open-redirect, CSV, compare, CVE version matching
 ```
 
 ---
@@ -322,6 +331,7 @@ tests/test_validation.py       6 tests   Flask headers, CSRF, login throttle
 - **Windows only** — Event log collection uses `wevtutil.exe` / `Get-WinEvent`; config checks use `net`, `netsh`, `sc`, and PowerShell cmdlets.
 - **Local machine only** — No network or remote scanning by design.
 - **NVD rate limits** — The free NVD API allows ~5 requests/30s. Set `NVD_API_KEY` in `.env` for higher throughput.
+- **CVE version filtering** — CVEs are kept only when the installed version falls inside NVD's published CPE version range; CVEs with no usable version data for the product are dropped (possible false negatives, far fewer false positives).
 - **CPE mapping** — Only applications listed in `NVD_ALLOWLIST` (in `config.py`) are checked against NVD. The list covers common apps (Chrome, Firefox, Python, 7-Zip, VLC, etc.).
 - **Elevated privileges** — Running without Administrator causes Event Log and some policy checks to return `error` status instead of real values.
 - **WMIC deprecated** — Windows 11 22H2+ deprecates WMIC. WinSentinel uses `sc query`, `netsh`, and PowerShell alternatives throughout.

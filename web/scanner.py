@@ -22,6 +22,7 @@ from db.database import (
     insert_findings,
     insert_alerts,
     insert_software,
+    insert_scan_metrics,
 )
 from collectors.config_audit import run_config_audit
 from collectors.event_logs import run_event_log_audit
@@ -103,7 +104,7 @@ class ScanManager:
 
             # Step 2: Log analysis
             self._update_progress("Log analysis", 40)
-            alerts, log_findings, _ = run_event_log_audit(scan_id=scan_id, fallback_to_sample=False)
+            alerts, log_findings, log_metrics = run_event_log_audit(scan_id=scan_id, fallback_to_sample=False)
 
             # Step 3: Software inventory
             self._update_progress("Software inventory", 60)
@@ -120,6 +121,7 @@ class ScanManager:
 
             insert_findings(all_findings)
             insert_alerts(alerts)
+            insert_scan_metrics(scan_id, log_metrics)
 
             posture_score = calculate_posture_score(all_findings)
             update_scan_status(scan_id=scan_id, status="completed", posture_score=posture_score)

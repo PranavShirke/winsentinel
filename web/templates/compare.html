@@ -1,0 +1,77 @@
+{% extends "layout.html" %}
+{% from "_macros.html" import icon, sev_badge %}
+
+{% block title %}Compare scans{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-kicker">Drift detection</div>
+    <h1 class="page-title">Compare scans</h1>
+    <p class="page-subtitle">See which risks appeared, which were fixed and which are still open between two completed scans.</p>
+  </div>
+</div>
+
+{% if completed_scans|length < 2 %}
+  <div class="panel empty-state bracketed">
+    {{ icon('compare', 'icon-lg') }}
+    <h3>Two completed scans needed</h3>
+    <p>Run at least two audits (for example before and after applying a fix) to see what changed.</p>
+  </div>
+{% else %}
+  <form method="GET" action="{{ url_for('views.compare') }}" class="filter-bar">
+    <div class="filter-group">
+      <label for="cmp-old">Baseline (older)</label>
+      <select id="cmp-old" name="old" class="input-control">
+        {% for s in completed_scans %}
+          <option value="{{ s.id }}" {% if old_scan and old_scan.id == s.id %}selected{% endif %}>#{{ s.id }} &middot; {{ s.started_at[:16].replace('T', ' ') }} &middot; score {{ s.posture_score }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="cmp-new">Compare to (newer)</label>
+      <select id="cmp-new" name="new" class="input-control">
+        {% for s in completed_scans %}
+          <option value="{{ s.id }}" {% if new_scan and new_scan.id == s.id %}selected{% endif %}>#{{ s.id }} &middot; {{ s.started_at[:16].replace('T', ' ') }} &middot; score {{ s.posture_score }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Compare</button>
+  </form>
+
+  {% if diff and old_scan and new_scan %}
+    {% set delta = (new_scan.posture_score or 0) - (old_scan.posture_score or 0) %}
+    <div class="delta-grid">
+      <div class="delta-card delta-new"><div class="stat-label">New risks</div><strong>{{ diff.new|length }}</strong><div class="stat-sub">Appeared since baseline</div></div>
+      <div class="delta-card delta-resolved"><div class="stat-label">Resolved</div><strong>{{ diff.resolved|length }}</strong><div class="stat-sub">No longer failing</div></div>
+      <div class="delta-card delta-persist"><div class="stat-label">Still open</div><strong>{{ diff.persisting|length }}</strong><div class="stat-sub">Score change
+        <span class="score-delta {% if delta > 0 %}delta-up{% elif delta < 0 %}delta-down{% endif %}">{{ '+' if delta > 0 else '' }}{{ delta }}</span></div></div>
+    </div>
+
+    {% for title, key, empty in [('New risks', 'new', 'Nothing new. No regressions since the baseline.'), ('Resolved since baseline', 'resolved', 'Nothing was resolved between these scans.'), ('Still open', 'persisting', 'No findings carried over.')] %}
+      <section class="panel panel-flush">
+        <div class="panel-title"><span>{{ title }}</span><span class="hint">{{ diff[key]|length }} finding{{ '' if diff[key]|length == 1 else 's' }}</span></div>
+        {% if not diff[key] %}
+          <div class="empty-state"><p>{{ empty }}</p></div>
+        {% else %}
+          <div class="table-responsive">
+            <table class="table">
+              <thead><tr><th>Severity</th><th>Finding</th><th>Module</th><th>Risk</th></tr></thead>
+              <tbody>
+                {% for f in diff[key] %}
+                  <tr>
+                    <td>{{ sev_badge(f.severity) }}</td>
+                    <td class="fw-600">{{ f.title }}</td>
+                    <td class="mono text-dim">{{ f.module|upper }}</td>
+                    <td class="mono">{{ f.risk_score }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </section>
+    {% endfor %}
+  {% endif %}
+{% endif %}
+{% endblock %}

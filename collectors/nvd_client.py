@@ -10,6 +10,7 @@ Features:
   - Transparent documentation of CPE mapping limitations.
 """
 
+import re
 import time
 import requests
 from typing import List, Dict, Any, Optional, Tuple
@@ -89,6 +90,83 @@ def calculate_cve_severity(risk_score: int) -> str:
         return "Low"
 
 
+def parse_version(ver: str) -> Tuple[int, ...]:
+    """
+    Convert a version string to a tuple of integers for comparison.
+
+    Args:
+        ver: Version text such as '120.0.6099.130' or '3.12.0 (64-bit)'.
+
+    Returns:
+        Tuple[int, ...]: Numeric components (empty tuple if no digits exist).
+    """
+    # Only the first dotted-number run counts, so "3.12.0 (64-bit)" is (3, 12, 0), not (3, 12, 0, 64)
+    match = re.search(r"\d+(?:\.\d+)*", ver or "")
+    return tuple(int(n) for n in match.group(0).split("."))[:6] if match else ()
+
+
+def version_is_affected(cve_data: Dict[str, Any], keyword: str, installed_version: str) -> Optional[bool]:
+    """
+    Decide whether an installed version falls inside a CVE's affected CPE ranges.
+
+    Looks at the vulnerable CPE matches whose CPE product contains `keyword` and checks
+    the exact version or the versionStart/End range bounds published by NVD.
+
+    Args:
+        cve_data: The 'cve' object from the NVD API response.
+        keyword: Matched allowlist keyword (e.g. 'google chrome').
+        installed_version: Installed version string from the registry.
+
+    Returns:
+        True if affected, False if provably not affected, None if NVD gives no usable
+        version data for this product (the CVE cannot be confirmed either way).
+    """
+    installed = parse_version(installed_version)
+    if not installed:
+        return None
+    key_tokens = [t for t in re.split(r"[^a-z0-9+]+", keyword.lower()) if t and t not in ("google", "mozilla", "microsoft", "media", "player")]
+    saw_relevant = False
+
+    def walk(nodes: List[Dict[str, Any]]):
+        for node in nodes:
+            yield from node.get("cpeMatch", [])
+            yield from walk(node.get("children", []))
+
+    for config in cve_data.get("configurations", []):
+        for match in walk(config.get("nodes", [])):
+            if not match.get("vulnerable", False):
+                continue
+            parts = match.get("criteria", "").split(":")
+            if len(parts) < 6:
+                continue
+            cpe_product, cpe_version = parts[4].lower(), parts[5]
+            if key_tokens and not any(tok in cpe_product for tok in key_tokens):
+                continue
+            saw_relevant = True
+
+            if cpe_version not in ("*", "-"):
+                if parse_version(cpe_version) == installed:
+                    return True
+                continue
+
+            low_inc = match.get("versionStartIncluding")
+            low_exc = match.get("versionStartExcluding")
+            high_inc = match.get("versionEndIncluding")
+            high_exc = match.get("versionEndExcluding")
+            if not any((low_inc, low_exc, high_inc, high_exc)):
+                return True  # product-wide match, no version bounds
+            if low_inc and installed < parse_version(low_inc):
+                continue
+            if low_exc and installed <= parse_version(low_exc):
+                continue
+            if high_inc and installed > parse_version(high_inc):
+                continue
+            if high_exc and installed >= parse_version(high_exc):
+                continue
+            return True
+    return False if saw_relevant else None
+
+
 class NvdClient:
     """National Vulnerability Database API client with rate limiting and local caching."""
 
@@ -156,7 +234,7 @@ class NvdClient:
 
         params = {
             "keywordSearch": norm_product,
-            "resultsPerPage": 5,  # Top 5 most relevant CVEs
+            "resultsPerPage": get_config().NVD_RESULTS_PER_PAGE,
         }
 
         try:
@@ -182,6 +260,12 @@ class NvdClient:
                 cve_data = item.get("cve", {})
                 cve_id = cve_data.get("id", "Unknown")
 
+                # Keep only CVEs whose published CPE ranges include the installed version.
+                # Unknown versions keep the keyword match; CVEs with no usable version data are dropped.
+                if norm_version != "Unknown":
+                    if version_is_affected(cve_data, norm_product, norm_version) is not True:
+                        continue
+
                 # Extract English description
                 descriptions = cve_data.get("descriptions", [])
                 desc_text = "No description provided."
@@ -192,7 +276,7 @@ class NvdClient:
 
                 # Extract CVSS v3.1 or v3.0 score, fallback to v2.0
                 metrics = cve_data.get("metrics", {})
-                cvss_score = 5.0  # Default moderate fallback
+                cvss_score = 5.0  # Moderate fallback when NVD has not scored the CVE yet
                 if "cvssMetricV31" in metrics and metrics["cvssMetricV31"]:
                     cvss_score = float(metrics["cvssMetricV31"][0]["cvssData"]["baseScore"])
                 elif "cvssMetricV30" in metrics and metrics["cvssMetricV30"]:
@@ -218,7 +302,9 @@ class NvdClient:
                     "description": desc_text[:500],
                 })
 
-            return True, cve_records, "Successfully fetched from NVD API"
+            # Highest severity first and cap, so dashboards show the worst CVEs
+            cve_records.sort(key=lambda c: c["cvss_score"], reverse=True)
+            return True, cve_records[:10], "Successfully fetched from NVD API"
 
         except requests.exceptions.Timeout:
             return False, [], "NVD API connection timed out. CVE lookup skipped (Offline Mode)."
@@ -272,6 +358,7 @@ def audit_software_vulnerabilities(
         return findings, all_cves
 
     nvd = client or NvdClient()
+    lookup_memo: Dict[Tuple[str, str], Tuple[bool, List[Dict[str, Any]], str]] = {}
 
     for item, kw in matched_items:
         if offline_mode:
@@ -289,7 +376,10 @@ def audit_software_vulnerabilities(
             ))
             continue
 
-        success, cves, msg = nvd.query_cves(product=kw, version=item.version, db_path=db_path)
+        memo_key = (kw, item.version)
+        if memo_key not in lookup_memo:  # e.g. several "Python 3.x" sub-packages share one lookup
+            lookup_memo[memo_key] = nvd.query_cves(product=kw, version=item.version, db_path=db_path)
+        success, cves, msg = lookup_memo[memo_key]
 
         if not success:
             findings.append(Finding(
@@ -311,7 +401,7 @@ def audit_software_vulnerabilities(
                 scan_id=scan_id,
                 module="software",
                 title=f"No Known Critical CVEs: {item.name} ({item.version})",
-                evidence=f"Queried NVD for product '{kw}'. Zero high-severity vulnerabilities returned.",
+                evidence=f"Queried NVD for product '{kw}'. No known CVEs affecting this installed version were returned.",
                 status="pass",
                 likelihood=1,
                 impact=1,

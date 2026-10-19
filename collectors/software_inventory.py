@@ -199,9 +199,9 @@ def match_allowed_software(
     for item in software_list:
         name_lower = item.name.lower()
         for kw in allowed:
-            # Word boundary or substring match
-            pattern = r"\b" + re.escape(kw) + r"\b"
-            if re.search(pattern, name_lower) or kw in name_lower:
+            # Whole-word match so "java" does not match "JavaScript Tools"
+            pattern = r"(?<![a-z0-9])" + re.escape(kw) + r"(?![a-z0-9])"
+            if re.search(pattern, name_lower):
                 matched.append((item, kw))
                 break
 

@@ -1,68 +1,54 @@
 {% extends "layout.html" %}
+{% from "_macros.html" import icon, sev_badge %}
 
-{% block title %}Security Alerts{% endblock %}
+{% block title %}Alerts{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Correlated Security Alerts</h1>
-    <p class="page-subtitle">Windows Security log incident detections, brute-force patterns, and credential abuse</p>
+    <div class="page-kicker">Incident detection</div>
+    <h1 class="page-title">Security alerts</h1>
+    <p class="page-subtitle">Windows Security log correlation: brute-force bursts, logons after repeated failures, new accounts, lockouts and privileged-group changes.</p>
   </div>
   {% if scan %}
-    <span class="badge badge-info">Scan #{{ scan.id }} &bull; {{ alerts|length }} Incident(s)</span>
+    <div class="page-actions"><span class="scan-chip">SCAN #{{ scan.id }} &middot; {{ alerts|length }} incident{{ '' if alerts|length == 1 else 's' }}</span></div>
   {% endif %}
 </div>
 
 {% if not scan %}
-  <div class="panel empty-state">
-    <h3>No Scan Selected</h3>
-    <p>Please execute a scan or select a previous scan from Scan History.</p>
+  <div class="panel empty-state bracketed">
+    {{ icon('alerts', 'icon-lg') }}
+    <h3>No scan selected</h3>
+    <p>Run a scan or pick a previous one from Scan history.</p>
   </div>
 {% else %}
-  <div class="panel">
-    <div class="panel-title">
-      <span>Detected Incidents & Threat Anomalies</span>
-      <span class="text-muted-sm">Analysis Horizon: Last 7 Days</span>
-    </div>
-
+  <section class="panel panel-flush">
+    <div class="panel-title"><span>Detected incidents</span><span class="hint">Rules: 5 failed logons in 10 minutes &middot; success after failures &middot; 4720 / 4740 / 4732</span></div>
     {% if not alerts %}
       <div class="empty-state">
-        <p>No brute-force logon patterns, account lockouts, or unauthorized modifications were detected in this scan.</p>
+        {{ icon('shield-check', 'icon-lg') }}
+        <p>No brute-force patterns, lockouts or unauthorised account changes were detected in this scan.</p>
       </div>
     {% else %}
       <div class="table-responsive">
         <table class="table">
-          <thead>
-            <tr>
-              <th>Timestamp</th>
-              <th>Incident Type</th>
-              <th>Target Account</th>
-              <th>Source IP</th>
-              <th>Attempts</th>
-              <th>Severity</th>
-              <th>Incident Details</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Time</th><th>Severity</th><th>Incident</th><th>Account</th><th>Source IP</th><th>Events</th><th>Details</th></tr></thead>
           <tbody>
             {% for a in alerts %}
               <tr class="{% if a.alert_type == 'Possible Compromise' %}highlight-compromise{% elif a.alert_type == 'Brute Force Attack' %}highlight-bruteforce{% endif %}">
-                <td class="text-muted-sm">{{ a.timestamp[:19] }}</td>
-                <td>
-                  <strong>{{ a.alert_type }}</strong>
-                </td>
+                <td class="mono text-dim nowrap">{{ a.timestamp[:19].replace('T', ' ') }}</td>
+                <td>{{ sev_badge(a.severity) }}</td>
+                <td class="fw-600">{{ a.alert_type }}</td>
                 <td><code>{{ a.account }}</code></td>
                 <td><code>{{ a.source_ip }}</code></td>
-                <td><strong>{{ a.count }}</strong></td>
-                <td>
-                  <span class="badge badge-{{ a.severity.lower() }}">{{ a.severity }}</span>
-                </td>
-                <td class="text-muted-sm">{{ a.details }}</td>
+                <td class="mono fw-600">{{ a.count }}</td>
+                <td class="text-dim">{{ a.details }}</td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     {% endif %}
-  </div>
+  </section>
 {% endif %}
 {% endblock %}

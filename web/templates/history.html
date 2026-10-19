@@ -1,81 +1,56 @@
 {% extends "layout.html" %}
+{% from "_macros.html" import icon, score_tone %}
 
-{% block title %}Scan History{% endblock %}
+{% block title %}Scan history{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Audit History & Trends</h1>
-    <p class="page-subtitle">Track security posture scores and vulnerability trends over time</p>
+    <div class="page-kicker">Trend</div>
+    <h1 class="page-title">Scan history</h1>
+    <p class="page-subtitle">Track posture score and open findings over time.</p>
   </div>
+  {% if all_scans|length > 1 %}
+    <div class="page-actions"><a class="btn btn-secondary btn-sm" href="{{ url_for('views.compare') }}">{{ icon('compare', 'icon-sm') }} Compare latest two</a></div>
+  {% endif %}
 </div>
 
 {% if not all_scans %}
-  <div class="panel empty-state">
-    <h3>No Historical Scans Found</h3>
-    <p>Run your first automated security audit to begin tracking security posture history.</p>
+  <div class="panel empty-state bracketed">
+    {{ icon('history', 'icon-lg') }}
+    <h3>No scans recorded</h3>
+    <p>Run your first audit to begin tracking posture over time.</p>
   </div>
 {% else %}
-  <!-- Posture Score Trend Chart Panel -->
-  <div class="panel">
-    <div class="panel-title">
-      <span>Security Posture Trend Over Time</span>
-      <span class="text-muted-sm">Score Range: 0 - 100</span>
-    </div>
-    <div class="history-chart-container">
-      <canvas id="historyTrendChart"></canvas>
-    </div>
-  </div>
+  <section class="panel">
+    <div class="panel-title"><span>Posture score trend</span><span class="hint">0 to 100, completed scans</span></div>
+    <div class="history-chart-container"><canvas id="historyTrendChart" role="img" aria-label="Line chart of posture score per scan"></canvas></div>
+  </section>
 
-  <!-- Scan History Table -->
-  <div class="panel">
-    <div class="panel-title">
-      <span>Historical Audit Sessions</span>
-      <span class="text-muted-sm">{{ all_scans|length }} Total Scans</span>
-    </div>
-
+  <section class="panel panel-flush">
+    <div class="panel-title"><span>Audit sessions</span><span class="hint">{{ all_scans|length }} most recent</span></div>
     <div class="table-responsive">
       <table class="table">
-        <thead>
-          <tr>
-            <th>Scan ID</th>
-            <th>Date & Time</th>
-            <th>Hostname</th>
-            <th>Posture Score</th>
-            <th>Failed Findings</th>
-            <th>Incidents / Alerts</th>
-            <th>Status</th>
-            <th>Action</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Scan</th><th>Started</th><th>Host</th><th>Score</th><th>Failed</th><th>Alerts</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
         <tbody>
           {% for s in all_scans %}
             <tr>
-              <td><strong>#{{ s.id }}</strong></td>
-              <td class="text-muted-sm">{{ s.started_at[:19] }}</td>
+              <td class="mono fw-600">#{{ s.id }}</td>
+              <td class="mono text-dim nowrap">{{ s.started_at[:19].replace('T', ' ') }}</td>
               <td><code>{{ s.hostname }}</code></td>
               <td>
-                <span class="badge {% if (s.posture_score or 0) >= 80 %}badge-low{% elif (s.posture_score or 0) >= 60 %}badge-medium{% elif (s.posture_score or 0) >= 40 %}badge-high{% else %}badge-critical{% endif %}">
-                  {{ s.posture_score if s.posture_score is not none else 'N/A' }} / 100
-                </span>
+                {% if s.posture_score is none %}<span class="text-faint">&mdash;</span>
+                {% else %}<span class="mono fw-600 {{ score_tone(s.posture_score) }}">{{ s.posture_score }}</span><span class="text-faint"> / 100</span>{% endif %}
               </td>
-              <td>{{ s.failed_count }}</td>
-              <td>{{ s.alert_count }}</td>
-              <td>
-                <span class="badge {% if s.status == 'completed' %}badge-low{% elif s.status == 'running' %}badge-high{% else %}badge-critical{% endif %}">
-                  {{ s.status|upper }}
-                </span>
-              </td>
-              <td>
-                <a href="{{ url_for('views.dashboard', scan_id=s.id) }}" class="btn btn-secondary btn-sm">
-                  View Dashboard
-                </a>
-              </td>
+              <td class="mono">{{ s.failed_count }}</td>
+              <td class="mono">{{ s.alert_count }}</td>
+              <td><span class="badge {% if s.status == 'completed' %}badge-low{% elif s.status == 'running' %}badge-signal{% else %}badge-critical{% endif %}">{{ s.status }}</span></td>
+              <td><a href="{{ url_for('views.dashboard', scan_id=s.id) }}" class="btn btn-secondary btn-sm">Open</a></td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-  </div>
+  </section>
 {% endif %}
 {% endblock %}

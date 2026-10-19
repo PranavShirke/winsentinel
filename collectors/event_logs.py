@@ -46,7 +46,7 @@ def load_events_from_fixture(fixture_path: Optional[Path] = None) -> List[Dict[s
 
 def collect_security_events(
     days: int = 7,
-    max_events: int = 1000,
+    max_events: int = 5000,
 ) -> Tuple[bool, List[Dict[str, Any]], str]:
     """
     Query the Windows Security event log for authentication and privilege events.
@@ -62,16 +62,25 @@ def collect_security_events(
         return False, [], "Event log collector only supported on Windows operating systems."
 
     # Build PowerShell script with XML parsing to extract structured event data
+    days = int(days)
+    max_events = int(max_events)
+    # Two queries: attack/audit events are rare and always fetched in full, while the
+    # very noisy 4624/4672 logon events are capped so they cannot push 4625s out of the result.
     ps_script = f"""
 $ErrorActionPreference = 'Stop'
 try {{
     $startDate = (Get-Date).AddDays(-{days})
-    $Filter = @{{
-        LogName   = 'Security'
-        Id        = @(4625, 4624, 4720, 4740, 4732, 4672)
-        StartTime = $startDate
+    $rawEvents = @()
+    foreach ($q in @(@{{ids = @(4625, 4720, 4740, 4732); max = {max_events}}}, @{{ids = @(4624, 4672); max = {max_events // 2}}})) {{
+        try {{
+            $rawEvents += Get-WinEvent -FilterHashtable @{{
+                LogName = 'Security'; Id = $q.ids; StartTime = $startDate
+            }} -MaxEvents $q.max
+        }} catch {{
+            # "No events were found" simply means a clean log for this ID set
+            if ($_.FullyQualifiedErrorId -notlike '*NoMatchingEventsFound*') {{ throw }}
+        }}
     }}
-    $rawEvents = Get-WinEvent -FilterHashtable $Filter -MaxEvents {max_events}
     $results = @()
     foreach ($ev in $rawEvents) {{
         $xml = [xml]$ev.ToXml()
@@ -93,7 +102,7 @@ try {{
             group_name         = $data['TargetUserName']
         }}
     }}
-    $results | ConvertTo-Json -Compress
+    if ($results.Count -eq 0) {{ '[]' }} else {{ ConvertTo-Json -InputObject @($results) -Compress }}
 }} catch {{
     [Console]::Error.WriteLine($_.Exception.Message)
     exit 1
@@ -106,12 +115,14 @@ try {{
 
     success, stdout, stderr = run_command(
         ["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded_str],
-        timeout=30,
+        timeout=90,
     )
 
-    if not success or not stdout.strip():
-        err_msg = stderr.strip() or "No events retrieved or unauthorized operation."
+    if not success:
+        err_msg = stderr.strip() or "Security log query failed (access denied or log unavailable)."
         return False, [], err_msg
+    if not stdout.strip():
+        return True, [], ""
 
     try:
         parsed = json.loads(stdout)

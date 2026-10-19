@@ -8,12 +8,17 @@ Provides routes for the SOC-style web dashboard:
   - GET /software: Installed software inventory and NVD CVE matches.
   - GET /history: Historical scan timeline and posture trend chart.
   - GET /report: Report preview page.
+  - GET /compare: Drift view between two scans (new / resolved / persisting findings).
+  - GET /findings/export.csv: CSV export of a scan's findings.
   - POST /scan/start: Initiates background scan execution.
   - GET /scan/status: Status polling endpoint for the active scan.
   - GET /api/summary: JSON endpoint providing Chart.js dataset feeds.
 """
 
+import csv
+import io
 import os
+import re
 from typing import Dict, Any, Optional, Tuple, List
 from flask import (
     Blueprint,
@@ -25,7 +30,9 @@ from flask import (
 )
 
 from db.database import (
-    get_latest_scan,
+    get_latest_completed_scan,
+    get_scan_metrics,
+    compare_scans,
     get_scan_by_id,
     get_all_scans,
     get_findings_by_scan_id,
@@ -52,7 +59,7 @@ def resolve_active_scan(scan_id_arg: Any = None) -> Tuple[Optional[Dict[str, Any
     if validated_id:
         scan = get_scan_by_id(validated_id)
     else:
-        scan = get_latest_scan()
+        scan = get_latest_completed_scan()
 
     if scan:
         summary = get_scan_summary_counts(scan["id"])
@@ -73,8 +80,8 @@ def resolve_active_scan(scan_id_arg: Any = None) -> Tuple[Optional[Dict[str, Any
 def inject_global_template_context():
     """Inject hostname, last scan timestamp, and helper variables into all templates."""
     hostname = os.environ.get("COMPUTERNAME", "localhost")
-    latest = get_latest_scan()
-    last_time = latest["started_at"][:19] if latest and latest.get("started_at") else None
+    latest = get_latest_completed_scan()
+    last_time = latest["started_at"][:19].replace("T", " ") if latest and latest.get("started_at") else None
     return {
         "current_hostname": hostname,
         "last_scan_time": last_time,
@@ -225,12 +232,70 @@ def download_report():
 
     from reports.report_builder import build_html_report
     html_content = build_html_report(scan["id"])
-    filename = f"WinSentinel_Audit_Report_{scan['hostname']}_Scan_{scan['id']}.html"
+    safe_host = re.sub(r"[^A-Za-z0-9_.-]", "_", scan["hostname"])[:40]  # no header injection
+    filename = f"WinSentinel_Audit_Report_{safe_host}_Scan_{scan['id']}.html"
 
     return Response(
         html_content,
         mimetype="text/html",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+def _csv_safe(value: Any) -> Any:
+    """Neutralise spreadsheet formula injection (=, +, -, @) in exported text cells."""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", chr(9), chr(13)):
+        return "'" + value
+    return value
+
+
+@views_bp.route("/findings/export.csv")
+@login_required
+def export_findings_csv():
+    """Download all findings of a scan as CSV for spreadsheets and ticketing tools."""
+    scan, _ = resolve_active_scan(request.args.get("scan_id"))
+    if not scan:
+        return "No scan available to export", 404
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["scan_id", "module", "severity", "status", "risk_score", "likelihood", "impact", "title", "evidence", "remediation"])
+    for f in get_findings_by_scan_id(scan["id"]):
+        writer.writerow([_csv_safe(v) for v in (
+            scan["id"], f["module"], f["severity"], f["status"], f["risk_score"],
+            f["likelihood"], f["impact"], f["title"], f["evidence"], f["remediation"],
+        )])
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=WinSentinel_Findings_Scan_{scan['id']}.csv"},
+    )
+
+
+@views_bp.route("/compare")
+@login_required
+def compare():
+    """Show what changed between two scans: new, resolved and persisting findings."""
+    completed = [s for s in get_all_scans(limit=50) if s["status"] == "completed"]
+    new_id = validate_scan_id(request.args.get("new"))
+    old_id = validate_scan_id(request.args.get("old"))
+    valid_ids = {s["id"] for s in completed}
+
+    if new_id not in valid_ids:
+        new_id = completed[0]["id"] if completed else None
+    if old_id not in valid_ids or old_id == new_id:
+        older = [s["id"] for s in completed if new_id and s["id"] < new_id]
+        old_id = older[0] if older else None
+
+    diff = compare_scans(old_id, new_id) if old_id and new_id else None
+    scans_by_id = {s["id"]: s for s in completed}
+    return render_template(
+        "compare.html",
+        active_page="compare",
+        completed_scans=completed,
+        old_scan=scans_by_id.get(old_id),
+        new_scan=scans_by_id.get(new_id),
+        diff=diff,
     )
 
 
@@ -280,13 +345,10 @@ def api_summary():
     severity_counts = summary.get("severity", {})
     module_counts = summary.get("modules", {})
 
-    # Extract daily failure counts from alerts or event metrics
+    # Real per-day 4625 counts saved by the log analysis step of this scan
     daily_failures: Dict[str, int] = {}
     if scan:
-        alerts = get_alerts_by_scan_id(scan["id"])
-        for a in alerts:
-            date_key = a["timestamp"][:10]
-            daily_failures[date_key] = daily_failures.get(date_key, 0) + a.get("count", 1)
+        daily_failures = get_scan_metrics(scan["id"]).get("daily_failures", {})
 
     all_scans = get_all_scans(limit=15)
     history_records = [
@@ -314,7 +376,7 @@ def api_summary():
     return jsonify({
         "scan_id": scan["id"] if scan else None,
         "hostname": scan["hostname"] if scan else os.environ.get("COMPUTERNAME", "localhost"),
-        "posture_score": scan["posture_score"] if scan else 100,
+        "posture_score": scan["posture_score"] if scan else None,
         "severity_counts": severity_counts,
         "module_counts": module_counts,
         "daily_failures": daily_failures,

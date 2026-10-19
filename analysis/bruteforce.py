@@ -117,7 +117,8 @@ def analyze_security_events(
     for ev in sorted_events:
         ev_id = ev.get("id")
         ts = parse_event_timestamp(ev.get("time_created"))
-        user = ev.get("target_user_name") or "Unknown"
+        # Windows account names are case-insensitive: "Admin" and "admin" are one target
+        user = (ev.get("target_user_name") or "Unknown").lower()
         ip = ev.get("ip_address") or "N/A"
         date_key = ts.strftime("%Y-%m-%d")
 

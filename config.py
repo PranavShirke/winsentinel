@@ -7,6 +7,7 @@ All configuration is strictly read-only at runtime to maintain security posture.
 """
 
 import os
+import secrets
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -15,6 +16,11 @@ BASE_DIR = Path(__file__).resolve().parent
 
 # Load environment variables from .env file if present
 load_dotenv(BASE_DIR / ".env")
+
+
+# Placeholder values that must never be used to sign sessions.
+_INSECURE_SECRET_KEYS = {"", "winsentinel-default-change-in-production-key-secret", "change-me"}
+_env_secret_key = os.getenv("SECRET_KEY", "").strip()
 
 
 class Config:
@@ -33,7 +39,10 @@ class Config:
     DB_PATH = os.getenv("DATABASE_PATH", str(BASE_DIR / "winsentinel.db"))
 
     # Security & Flask settings
-    SECRET_KEY = os.getenv("SECRET_KEY", "winsentinel-default-change-in-production-key-secret")
+    # No hardcoded fallback: if .env has no real key, a random per-process key is used
+    # (sessions simply end when the server restarts) and a warning is shown at startup.
+    SECRET_KEY_IS_EPHEMERAL = _env_secret_key in _INSECURE_SECRET_KEYS
+    SECRET_KEY = secrets.token_hex(32) if SECRET_KEY_IS_EPHEMERAL else _env_secret_key
     DEBUG = False  # Hardcoded False per application security decisions
     HOST = "127.0.0.1"  # Bound strictly to localhost loopback
     PORT = 5000
@@ -57,6 +66,8 @@ class Config:
     # Rate limits: ~5 req/30s unauthenticated (6.0s delay), ~50 req/30s with API key (0.7s delay)
     NVD_REQUEST_DELAY_SECONDS = 0.7 if NVD_API_KEY else 6.0
     NVD_TIMEOUT_SECONDS = 15
+    # Maximum CVEs pulled per product keyword before version filtering
+    NVD_RESULTS_PER_PAGE = 60
 
     # Software Inventory Allowlist (Only check well-known products against NVD)
     SOFTWARE_ALLOWLIST = [

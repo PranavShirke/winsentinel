@@ -1,76 +1,67 @@
+{% from "_macros.html" import icon %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login - WinSentinel Dashboard</title>
+  <meta name="color-scheme" content="dark">
+  <title>Sign in | WinSentinel</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
-<body>
+<body class="auth-page">
   <div class="login-container">
-    <div class="login-card">
-      <div class="login-header">
-        <h1 class="login-title">WinSentinel</h1>
-        <p class="login-subtitle">Windows Security Audit & Risk Dashboard</p>
+    <aside class="login-aside">
+      <a class="brand" href="{{ url_for('views.welcome') }}">
+        <span class="brand-mark">{{ icon('shield-check') }}</span>
+        <span class="brand-name">WinSentinel<small>OPS CONSOLE</small></span>
+      </a>
+      <div>
+        <div class="eyebrow">Local-first audit</div>
+        <h2>Know your Windows posture.</h2>
+        <p>Configuration checks, event-log detections and CVE exposure, scored with NIST SP 800-30 and kept on this machine.</p>
+        <ul class="login-points">
+          <li>{{ icon('eye') }} Read-only: nothing on the host is changed</li>
+          <li>{{ icon('lock') }} Bound to 127.0.0.1, CSRF-protected, lockout after repeated failures</li>
+          <li>{{ icon('terminal') }} No external requests from your browser</li>
+        </ul>
       </div>
+      <div class="text-faint text-sm">Authorised use on machines you own.</div>
+    </aside>
 
-      <!-- Flash messages (Errors, lockout notifications) -->
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          <div class="flash-messages">
-            {% for category, message in messages %}
-              <div class="alert-flash alert-flash-{{ category }}">
-                {{ message }}
-              </div>
-            {% endfor %}
+    <main class="login-main">
+      <div class="login-card">
+        <h1 class="login-title">Administrator sign in</h1>
+        <p class="login-subtitle">Enter the password you set with <code>main.py set-password</code>.</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-messages" role="alert">
+              {% for category, message in messages %}
+                <div class="alert-flash alert-flash-{{ category }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" class="form-input" value="admin" required autocomplete="username" {% if locked or disabled %}disabled{% endif %}>
           </div>
-        {% endif %}
-      {% endwith %}
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" class="form-input" required autocomplete="current-password" autofocus {% if locked or disabled %}disabled{% endif %}>
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg btn-block" {% if locked or disabled %}disabled{% endif %}>Sign in</button>
+        </form>
 
-      <form method="POST" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-        <div class="form-group">
-          <label for="username">Administrator Username</label>
-          <input
-            type="text"
-            id="username"
-            name="username"
-            class="form-input"
-            value="admin"
-            required
-            autocomplete="username"
-            {% if locked or disabled %}disabled{% endif %}
-          >
+        <div class="login-footer">
+          <a href="{{ url_for('views.welcome') }}">&larr; Back to overview</a>
+          <span>127.0.0.1 only</span>
         </div>
-
-        <div class="form-group">
-          <label for="password">Password</label>
-          <input
-            type="password"
-            id="password"
-            name="password"
-            class="form-input"
-            required
-            autocomplete="current-password"
-            {% if locked or disabled %}disabled{% endif %}
-          >
-        </div>
-
-        <button
-          type="submit"
-          class="btn btn-primary btn-block"
-          {% if locked or disabled %}disabled{% endif %}
-        >
-          Sign In
-        </button>
-      </form>
-
-      <div class="login-footer">
-        <a href="{{ url_for('views.welcome') }}">Back to WinSentinel overview</a>
-        <span>Bound strictly to 127.0.0.1.</span>
       </div>
-    </div>
+    </main>
   </div>
 </body>
 </html>

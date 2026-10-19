@@ -1,108 +1,84 @@
+{% from "_macros.html" import icon %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <title>{% block title %}WinSentinel{% endblock %} - Windows Security Audit Framework</title>
+  <meta name="color-scheme" content="dark">
+  <title>{% block title %}Console{% endblock %} | WinSentinel</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
-<body>
+<body class="app">
+  <a class="skip-link" href="#main">Skip to content</a>
   <div class="app-container">
-    <!-- Fixed Sidebar (220px) -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="logo-text">
-          <span>WinSentinel</span>
-          <span class="logo-badge">v1.0</span>
-        </div>
-      </div>
-      <ul class="nav-links">
-        <li class="nav-item">
-          <a href="{{ url_for('views.dashboard') }}" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">
-            <span class="nav-icon">◫</span> Dashboard
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="{{ url_for('views.findings') }}" class="nav-link {% if active_page == 'findings' %}active{% endif %}">
-            <span class="nav-icon">⌁</span> Findings
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="{{ url_for('views.alerts') }}" class="nav-link {% if active_page == 'alerts' %}active{% endif %}">
-            <span class="nav-icon">!</span> Alerts
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="{{ url_for('views.software') }}" class="nav-link {% if active_page == 'software' %}active{% endif %}">
-            <span class="nav-icon">◇</span> Software and CVEs
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="{{ url_for('views.history') }}" class="nav-link {% if active_page == 'history' %}active{% endif %}">
-            <span class="nav-icon">◷</span> Scan History
-          </a>
-        </li>
-        <li class="nav-item">
-          <a href="{{ url_for('views.report_preview') }}" class="nav-link {% if active_page == 'report' %}active{% endif %}">
-            <span class="nav-icon">▤</span> Report
-          </a>
-        </li>
-        <li class="nav-item nav-item-logout">
-          <a href="{{ url_for('auth.logout') }}" class="nav-link">
-            <span class="nav-icon">↪</span> Logout
-          </a>
-        </li>
-      </ul>
+    <aside class="sidebar" aria-label="Primary">
+      <a class="brand" href="{{ url_for('views.dashboard') }}" aria-label="WinSentinel dashboard">
+        <span class="brand-mark">{{ icon('shield-check') }}</span>
+        <span class="brand-name">WinSentinel<small>OPS CONSOLE</small></span>
+      </a>
+
+      <nav>
+        <div class="nav-section">Monitor</div>
+        <ul class="nav-links">
+          <li><a href="{{ url_for('views.dashboard') }}" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}" {% if active_page == 'dashboard' %}aria-current="page"{% endif %}>{{ icon('dashboard') }} Dashboard</a></li>
+          <li><a href="{{ url_for('views.findings') }}" class="nav-link {% if active_page == 'findings' %}active{% endif %}" {% if active_page == 'findings' %}aria-current="page"{% endif %}>{{ icon('findings') }} Findings</a></li>
+          <li><a href="{{ url_for('views.alerts') }}" class="nav-link {% if active_page == 'alerts' %}active{% endif %}" {% if active_page == 'alerts' %}aria-current="page"{% endif %}>{{ icon('alerts') }} Alerts</a></li>
+          <li><a href="{{ url_for('views.software') }}" class="nav-link {% if active_page == 'software' %}active{% endif %}" {% if active_page == 'software' %}aria-current="page"{% endif %}>{{ icon('software') }} Software &amp; CVEs</a></li>
+        </ul>
+        <div class="nav-section">Analyse</div>
+        <ul class="nav-links">
+          <li><a href="{{ url_for('views.history') }}" class="nav-link {% if active_page == 'history' %}active{% endif %}" {% if active_page == 'history' %}aria-current="page"{% endif %}>{{ icon('history') }} Scan history</a></li>
+          <li><a href="{{ url_for('views.compare') }}" class="nav-link {% if active_page == 'compare' %}active{% endif %}" {% if active_page == 'compare' %}aria-current="page"{% endif %}>{{ icon('compare') }} Compare scans</a></li>
+          <li><a href="{{ url_for('views.report_preview') }}" class="nav-link {% if active_page == 'report' %}active{% endif %}" {% if active_page == 'report' %}aria-current="page"{% endif %}>{{ icon('report') }} Report</a></li>
+        </ul>
+      </nav>
+
+      <div class="sidebar-spacer"></div>
+
+      <form class="logout-form" method="POST" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="nav-link">{{ icon('logout') }} Sign out</button>
+      </form>
       <div class="sidebar-footer">
-        <div>Host: <strong>{{ current_hostname }}</strong></div>
-        <div>User: {{ session.get('username', 'Admin') }}</div>
+        <div>HOST <strong>{{ current_hostname }}</strong></div>
+        <div>USER <strong>{{ session.get('username', 'admin') }}</strong></div>
       </div>
     </aside>
 
-    <!-- Main Content Wrapper -->
     <div class="main-wrapper">
-      <!-- Top Bar -->
       <header class="topbar">
         <div class="topbar-info">
-          <div class="info-item">
-            Audited Host: <strong>{{ current_hostname }}</strong>
-          </div>
-          <div class="info-item">
-            Last Scan: <strong>{{ last_scan_time or 'No scans performed yet' }}</strong>
-          </div>
+          <span><span class="live-dot"></span>Audited host <strong>{{ current_hostname }}</strong></span>
+          <span>Last scan <strong>{{ last_scan_time or 'never' }}</strong></span>
         </div>
-        <div class="topbar-actions">
-          <button id="btn-start-scan" class="btn btn-primary">
-            Run new scan
-          </button>
-        </div>
+        <button id="btn-start-scan" type="button" class="btn btn-primary btn-sm">
+          {{ icon('scan', 'icon-sm') }} Run new scan <span class="spinner" aria-hidden="true"></span>
+        </button>
       </header>
 
-      <!-- Content Area -->
-      <main class="content-area">
-        <!-- Background Scan Progress Banner -->
-        <div id="progress-banner" class="progress-banner">
+      <main id="main" class="content-area">
+        <section id="progress-banner" class="progress-banner" aria-live="polite" aria-label="Scan progress">
           <div class="progress-banner-header">
-            <strong class="text-accent">Audit Scan in Progress</strong>
-            <span id="progress-percent" class="text-bold">0%</span>
+            <strong>Audit in progress</strong>
+            <span id="progress-percent" class="progress-percent">0%</span>
           </div>
-          <div id="progress-step" class="progress-step-text">
-            Initializing scan...
-          </div>
-          <div class="progress-bar-bg">
-            <div id="progress-bar-fill" class="progress-bar-fill"></div>
-          </div>
-        </div>
+          <ol class="pipeline" id="scan-pipeline">
+            <li data-step="Config audit">Config audit</li>
+            <li data-step="Log analysis">Log analysis</li>
+            <li data-step="Software inventory">Software inventory</li>
+            <li data-step="CVE lookup">CVE lookup</li>
+            <li data-step="Scoring">Scoring</li>
+          </ol>
+          <div id="progress-step" class="progress-step-text">Initializing scan...</div>
+          <div class="progress-bar-bg"><div id="progress-bar-fill" class="progress-bar-fill"></div></div>
+        </section>
 
-        <!-- Flash Notifications -->
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
-            <div class="flash-messages">
+            <div class="flash-messages" role="status">
               {% for category, message in messages %}
-                <div class="alert-flash alert-flash-{{ category }}">
-                  {{ message }}
-                </div>
+                <div class="alert-flash alert-flash-{{ category }}">{{ message }}</div>
               {% endfor %}
             </div>
           {% endif %}
@@ -111,15 +87,12 @@
         {% block content %}{% endblock %}
       </main>
 
-      <!-- Footer with Legal & Scope Notice -->
       <footer class="app-footer">
-        <strong>Legal & Ethical Scope:</strong> WinSentinel audits ONLY this local machine (127.0.0.1).
-        Read-only security posture analysis. No remote scanning, exploitation, automated remediation, or Active Directory modifications.
+        <strong>Scope:</strong> WinSentinel audits only this local machine. Read-only analysis. No remote scanning, exploitation, automated remediation or Active Directory changes.
       </footer>
     </div>
   </div>
 
-  <!-- Vendored Local Chart.js & Application JS (Strictly zero external calls) -->
   <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>

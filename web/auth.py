@@ -23,6 +23,7 @@ from flask import (
     session,
     flash,
 )
+from urllib.parse import urlparse
 from werkzeug.security import check_password_hash
 
 from config import get_config
@@ -109,6 +110,21 @@ def clear_failed_attempts(identifier: str) -> None:
         del _login_failures[identifier]
 
 
+def safe_next_url(target: Optional[str]) -> str:
+    """
+    Return `target` only if it is a same-site relative path; otherwise the dashboard URL.
+
+    Blocks open-redirect abuse such as ?next=https://evil.example or ?next=//evil.example.
+    """
+    default = url_for("views.dashboard")
+    if not target:
+        return default
+    parsed = urlparse(target)
+    if parsed.scheme or parsed.netloc or not target.startswith("/") or target.startswith("//") or "\\" in target:
+        return default
+    return target
+
+
 def login_required(view_func):
     """Decorator to enforce authentication and 30-minute session timeouts."""
     @wraps(view_func)
@@ -149,7 +165,7 @@ def login():
     if locked:
         mins = remaining // 60
         secs = remaining % 60
-        flash(f"Account locked due to 5 consecutive failed login attempts. Retry in {mins}m {secs}s.", "error")
+        flash(f"Too many failed login attempts. Retry in {mins}m {secs}s.", "error")
         return render_template("login.html", locked=True, remaining_secs=remaining)
 
     if request.method == "POST":
@@ -169,25 +185,24 @@ def login():
             session.permanent = True
 
             logger.info("Login SUCCESS for user '%s' from IP %s", username, client_ip)
-            next_url = request.args.get("next") or url_for("views.dashboard")
-            return redirect(next_url)
+            return redirect(safe_next_url(request.args.get("next")))
         else:
             # Failure
             count, just_locked = record_failed_attempt(client_ip)
             logger.warning("Login FAILURE for user '%s' from IP %s (Attempt %d)", username, client_ip, count)
 
             if just_locked:
-                logger.error("Login LOCKOUT activated for IP %s (5 failures)", client_ip)
-                flash(f"5 failed login attempts reached. Login locked for 5 minutes.", "error")
-                return render_template("login.html", locked=True, remaining_secs=300)
+                logger.error("Login LOCKOUT activated for IP %s (%d failures)", client_ip, count)
+                flash(f"{count} failed login attempts reached. Login locked for {get_config().LOGIN_LOCKOUT_MINUTES} minutes.", "error")
+                return render_template("login.html", locked=True, remaining_secs=get_config().LOGIN_LOCKOUT_MINUTES * 60)
             else:
                 remaining_attempts = get_config().LOGIN_MAX_FAILED_ATTEMPTS - count
-                flash(f"Invalid credentials. {remaining_attempts} attempt(s) remaining before 5-minute lockout.", "error")
+                flash(f"Invalid credentials. {remaining_attempts} attempt(s) remaining before {get_config().LOGIN_LOCKOUT_MINUTES}-minute lockout.", "error")
 
     return render_template("login.html", locked=False)
 
 
-@auth_bp.route("/logout")
+@auth_bp.route("/logout", methods=["POST"])
 def logout():
     """Clear session data and redirect to login."""
     username = session.get("username", "Unknown")

@@ -26,6 +26,7 @@ from db.database import (
     insert_findings,
     insert_alerts,
     insert_software,
+    insert_scan_metrics,
     get_latest_scan,
 )
 from db.models import Finding, Alert, SoftwareItem
@@ -93,8 +94,9 @@ def cmd_set_password(args: argparse.Namespace) -> None:
         print("[-] Error: Passwords do not match.", file=sys.stderr)
         sys.exit(1)
 
-    if len(password) < 8:
-        print("[!] Warning: Password is shorter than 8 characters.", file=sys.stderr)
+    if len(password) < 12:
+        print("[-] Error: Password must be at least 12 characters.", file=sys.stderr)
+        sys.exit(1)
 
     password_hash = generate_password_hash(password, method="scrypt")
     create_or_update_admin(username=username, password_hash=password_hash)
@@ -145,6 +147,7 @@ def cmd_scan(args: argparse.Namespace) -> None:
     all_findings = config_findings + log_findings + sw_findings
     insert_findings(all_findings, db_path=None)
     insert_alerts(alerts, db_path=None)
+    insert_scan_metrics(scan_id, metrics)
 
     from risk.scoring import calculate_posture_score
 
@@ -189,6 +192,14 @@ def cmd_serve(args: argparse.Namespace) -> None:
 
     from web.app import create_app
     cfg = get_config()
+    if cfg.SECRET_KEY_IS_EPHEMERAL:
+        print(
+            "[!] SECRET_KEY is not set in .env: using a random key for this run "
+            "(you will be logged out on restart). Generate one with:
+"
+            "    python -c \"import secrets; print(secrets.token_hex(32))\"",
+            file=sys.stderr,
+        )
     app = create_app()
 
     print("=" * 60)

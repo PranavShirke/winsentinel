@@ -1,0 +1,45 @@
+{# Shared template macros: SVG icon set and severity/status badges. #}
+{% set ICONS = {
+  'dashboard': '<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>',
+  'findings': '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M3 6l1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2"/>',
+  'alerts': '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  'software': '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+  'history': '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  'compare': '<path d="M7 4v13M3 13l4 4 4-4"/><path d="M17 20V7M13 11l4-4 4 4"/>',
+  'report': '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
+  'logout': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/>',
+  'shield': '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+  'shield-check': '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+  'scan': '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 12l6-6"/>',
+  'chevron': '<path d="M6 9l6 6 6-6"/>',
+  'download': '<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',
+  'lock': '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  'terminal': '<path d="M4 17l6-5-6-5M12 19h8"/>',
+  'check': '<path d="M5 13l4 4L19 7"/>',
+  'warn': '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
+  'eye': '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  'activity': '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+  'file': '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/>'
+} %}
+
+{% macro icon(name, cls='') -%}
+<svg class="icon {{ cls }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">{{ ICONS[name]|safe }}</svg>
+{%- endmacro %}
+
+{% macro sev_badge(severity) -%}
+<span class="badge badge-{{ severity|lower }}">{{ severity }}</span>
+{%- endmacro %}
+
+{% macro status_badge(status) -%}
+{%- if status == 'pass' -%}<span class="badge badge-low">Pass</span>
+{%- elif status == 'fail' -%}<span class="badge badge-critical">Fail</span>
+{%- else -%}<span class="badge badge-error">Error</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro score_tone(score) -%}
+{%- if score is none -%}tone-warn{%- elif score >= 80 -%}tone-good{%- elif score >= 60 -%}tone-warn{%- elif score >= 40 -%}tone-high{%- else -%}tone-crit{%- endif -%}
+{%- endmacro %}
+
+{% macro score_grade(score) -%}
+{%- if score is none -%}Pending{%- elif score >= 90 -%}Hardened{%- elif score >= 80 -%}Good{%- elif score >= 60 -%}Fair{%- elif score >= 40 -%}At risk{%- else -%}Critical{%- endif -%}
+{%- endmacro %}

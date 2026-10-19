@@ -51,8 +51,13 @@ def apply_security_headers(response: Response) -> Response:
     # 4. Referrer Policy
     response.headers["Referrer-Policy"] = "no-referrer"
 
+    # 4b. Disable powerful browser features and isolate the browsing context
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+
     # 5. Sensitive Data Caching Protection (Authenticated views)
-    if "user_id" in session:
+    if "user_id" in session or response.mimetype in ("text/csv", "application/json"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"

@@ -31,6 +31,7 @@ def create_app() -> Flask:
     # Core Security Settings
     app.config["SECRET_KEY"] = cfg.SECRET_KEY
     app.config["DEBUG"] = False
+    app.config["MAX_CONTENT_LENGTH"] = 64 * 1024  # no endpoint needs large request bodies
     app.config["SESSION_COOKIE_HTTPONLY"] = cfg.SESSION_COOKIE_HTTPONLY
     app.config["SESSION_COOKIE_SAMESITE"] = cfg.SESSION_COOKIE_SAMESITE
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=cfg.SESSION_TIMEOUT_MINUTES)
@@ -52,6 +53,10 @@ def create_app() -> Flask:
         if request.path.startswith("/api/") or request.path.startswith("/scan/"):
             return jsonify({"error": "Bad Request / CSRF verification failed."}), 400
         return "<h1>400 Bad Request</h1><p>CSRF verification failed or invalid request.</p>", 400
+
+    @app.errorhandler(405)
+    def method_not_allowed_error(e):
+        return "<h1>405 Method Not Allowed</h1>", 405
 
     @app.errorhandler(404)
     def not_found_error(e):

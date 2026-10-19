@@ -1,67 +1,67 @@
+{% from "_macros.html" import icon %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="WinSentinel local Windows security posture monitoring and risk scoring.">
-  <title>WinSentinel | Windows Security Posture</title>
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="WinSentinel: local Windows security audit, log analysis and NIST SP 800-30 risk scoring.">
+  <title>WinSentinel | Windows security audit console</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
 <body class="welcome-page">
   <header class="welcome-nav">
-    <a class="welcome-brand" href="{{ url_for('views.welcome') }}">
-      <span class="brand-mark">W</span>
-      <span>WinSentinel</span>
-      <span class="logo-badge">v1.0</span>
+    <a class="brand" href="{{ url_for('views.welcome') }}">
+      <span class="brand-mark">{{ icon('shield-check') }}</span>
+      <span class="brand-name">WinSentinel<small>OPS CONSOLE</small></span>
     </a>
-    <a class="btn btn-secondary" href="{{ url_for('auth.login') }}">Administrator sign in</a>
+    <a class="btn btn-secondary btn-sm" href="{{ url_for('auth.login') }}">Administrator sign in</a>
   </header>
 
   <main>
     <section class="welcome-hero">
-      <div class="hero-copy">
-        <div class="eyebrow"><span class="status-dot"></span> LOCAL-FIRST WINDOWS SECURITY</div>
-        <h1>See your Windows security posture <span>clearly.</span></h1>
-        <p class="hero-lead">
-          WinSentinel turns configuration checks, event-log signals, software inventory,
-          and CVE intelligence into one focused security operations dashboard.
-        </p>
+      <div>
+        <div class="eyebrow">Windows security audit</div>
+        <h1>Find the weak spots on your PC <em>before</em> an attacker does.</h1>
+        <p class="hero-lead">WinSentinel audits password policy, firewall, Defender, RDP and SMB exposure, reads the Security event log for brute-force attacks, and checks installed software against known CVEs, then ranks every risk.</p>
         <div class="hero-actions">
-          <a class="btn btn-primary btn-large" href="{{ url_for('auth.login') }}">Open security dashboard <span>→</span></a>
-          <a class="text-link" href="#capabilities">Explore capabilities ↓</a>
+          <a class="btn btn-primary btn-lg" href="{{ url_for('auth.login') }}">Open the console {{ icon('scan') }}</a>
+          <a class="btn btn-secondary btn-lg" href="#capabilities">What it checks</a>
         </div>
-        <div class="hero-note"><span class="shield-icon">✓</span> Read-only analysis · localhost only · no automated remediation</div>
+        <div class="hero-note">{{ icon('eye', 'icon-sm') }} Read-only &middot; localhost only &middot; no automatic changes</div>
       </div>
-      <div class="hero-visual" aria-label="Illustration of the WinSentinel security dashboard">
-        <div class="visual-glow"></div>
-        <div class="terminal-card">
-          <div class="terminal-top"><span></span><span></span><span></span><strong>WINSENTINEL / POSTURE</strong></div>
-          <div class="terminal-score"><strong>84</strong><small>/100</small><em>GOOD</em></div>
-          <div class="terminal-line"><span>CONFIGURATION</span><b>24 checks</b><i class="line-good"></i></div>
-          <div class="terminal-line"><span>EVENT LOG SIGNALS</span><b>7 days</b><i class="line-blue"></i></div>
-          <div class="terminal-line"><span>SOFTWARE INVENTORY</span><b>43 apps</b><i class="line-warn"></i></div>
-          <div class="terminal-alert"><span>!</span> 2 findings need attention <small>now</small></div>
+
+      <div class="console-card" role="img" aria-label="Sample posture readout: score 84 out of 100, two findings need attention">
+        <div class="console-top"><i></i><i></i><i></i><span>POSTURE / SAMPLE READOUT</span></div>
+        <div class="console-body">
+          <div class="console-score"><strong>84</strong><small>/ 100</small><em>GOOD</em></div>
+          <div class="console-line"><span>Configuration</span><b>24 checks</b><div class="console-meter"><span class="w-92"></span></div></div>
+          <div class="console-line"><span>Event-log signals</span><b>7 days</b><div class="console-meter"><span class="w-78"></span></div></div>
+          <div class="console-line"><span>Software CVEs</span><b>43 apps</b><div class="console-meter"><span class="w-64"></span></div></div>
+          <div class="console-alert">{{ icon('warn', 'icon-sm') }} 2 findings need attention</div>
         </div>
       </div>
     </section>
 
     <section id="capabilities" class="capability-section">
       <div class="section-heading">
-        <div class="eyebrow">BUILT FOR SECURITY ANALYSIS</div>
-        <h2>One command. A clearer security story.</h2>
-        <p>Purpose-built modules that help you understand what is happening on your Windows machine.</p>
+        <div class="eyebrow">What it covers</div>
+        <h2>Four signals, one risk score.</h2>
+        <p>Each finding gets a likelihood &times; impact rating and a concrete fix, so you know what to do first.</p>
       </div>
       <div class="capability-grid">
-        <article class="capability-card"><div class="capability-icon icon-blue">◈</div><h3>Configuration posture</h3><p>Review firewall, Defender, SMB, RDP, account policy, UAC, and exposed services.</p><span>30+ checks</span></article>
-        <article class="capability-card"><div class="capability-icon icon-cyan">⌁</div><h3>Event intelligence</h3><p>Correlate failed logons and account activity into actionable brute-force alerts.</p><span>Security logs</span></article>
-        <article class="capability-card"><div class="capability-icon icon-purple">◇</div><h3>Risk & CVE context</h3><p>Combine NIST-style risk scoring with allowlisted software vulnerability signals.</p><span>Evidence-led</span></article>
+        <article class="capability-card"><div class="icon-wrap">{{ icon('dashboard') }}</div><h3>Configuration</h3><p>Password policy, admins, firewall, Defender, UAC, RDP/NLA, SMBv1 and risky listening ports.</p><span class="tag">VAPT &middot; hardening</span></article>
+        <article class="capability-card"><div class="icon-wrap">{{ icon('alerts') }}</div><h3>Event logs</h3><p>Events 4625, 4624, 4720, 4740 and 4732 correlated into brute-force and compromise alerts.</p><span class="tag">SIM &middot; detection</span></article>
+        <article class="capability-card"><div class="icon-wrap">{{ icon('software') }}</div><h3>Software CVEs</h3><p>Installed apps matched to NVD CVEs and filtered by the version you actually run.</p><span class="tag">NVD &middot; CVSS</span></article>
+        <article class="capability-card"><div class="icon-wrap">{{ icon('compare') }}</div><h3>Drift &amp; reports</h3><p>Compare scans to prove a fix worked, export CSV, or download a print-ready HTML report.</p><span class="tag">Audit evidence</span></article>
       </div>
     </section>
 
     <section class="welcome-trust">
-      <span>DESIGNED FOR</span><strong>VAPT LABS</strong><strong>SECURITY OPERATIONS</strong><strong>APPLICATION SECURITY</strong><span class="trust-divider"></span><span>Python · Flask · SQLite · NIST SP 800-30</span>
+      <span>Built for</span><strong>VAPT Lab</strong><strong>Security Information Mgmt</strong><strong>Application Security</strong>
+      <span>Python &middot; Flask &middot; SQLite &middot; NIST SP 800-30</span>
     </section>
   </main>
-  <footer class="welcome-footer">WinSentinel audits only the local machine. It is read-only and intended for educational and defensive use.</footer>
+  <footer class="welcome-footer">WinSentinel audits only the machine it runs on. For educational and defensive use on systems you own.</footer>
 </body>
 </html>

@@ -1,147 +1,111 @@
 {% extends "layout.html" %}
+{% from "_macros.html" import icon, sev_badge, score_tone, score_grade %}
 
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Security Posture Dashboard</h1>
-    <p class="page-subtitle">Windows audit metrics, incident alerts, and vulnerability posture</p>
+    <div class="page-kicker">Posture overview</div>
+    <h1 class="page-title">Security command deck</h1>
+    <p class="page-subtitle">Configuration, event-log and vulnerability signals for this machine, scored with NIST SP 800-30 likelihood &times; impact.</p>
   </div>
   {% if scan %}
-    <span class="badge badge-info">Scan #{{ scan.id }} &bull; {{ scan.started_at[:19] }}</span>
+    <div class="page-actions">
+      <span class="scan-chip">SCAN #{{ scan.id }} &middot; {{ scan.started_at[:19].replace('T', ' ') }}</span>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('views.report_preview', scan_id=scan.id) }}">{{ icon('report', 'icon-sm') }} Report</a>
+    </div>
   {% endif %}
 </div>
 
 {% if not scan %}
-  <!-- Empty State -->
-  <div class="panel empty-state">
-    <h3>No Security Scans Recorded</h3>
-    <p>Run your first automated security audit to evaluate password policies, event logs, and software CVEs.</p>
-    <div class="mt-16">
-      <button id="btn-empty-scan" class="btn btn-primary">
-        Run First Scan
-      </button>
-    </div>
+  <div class="panel empty-state bracketed">
+    {{ icon('scan', 'icon-lg') }}
+    <h3>No completed scans yet</h3>
+    <p>Run your first audit to evaluate password policy, firewall, Defender, RDP/SMB exposure, Security event logs and installed-software CVEs.</p>
+    <div class="mt-24"><button id="btn-empty-scan" type="button" class="btn btn-primary btn-lg">{{ icon('scan') }} Run first scan</button></div>
   </div>
 {% else %}
-  <!-- 4 Summary Cards Grid -->
-  <div class="cards-grid">
-    <!-- Card 1: Posture Score Ring -->
-    <div class="card score-card">
-      <div class="score-ring">
-        <svg width="76" height="76" viewBox="0 0 76 76">
-          <circle cx="38" cy="38" r="32" stroke="#263040" stroke-width="6" fill="none" />
-          <circle
-            cx="38"
-            cy="38"
-            r="32"
-            stroke="{% if scan.posture_score >= 80 %}#22c55e{% elif scan.posture_score >= 60 %}#eab308{% elif scan.posture_score >= 40 %}#f97316{% else %}#ef4444{% endif %}"
-            stroke-width="6"
-            stroke-dasharray="201"
-            stroke-dashoffset="{{ 201 - (201 * (scan.posture_score or 0) / 100) }}"
-            stroke-linecap="round"
-            fill="none"
-          />
+  {% set score = scan.posture_score %}
+  {% set sev = summary.severity %}
+  {% set crit = sev.get('Critical', 0) %}{% set high = sev.get('High', 0) %}{% set med = sev.get('Medium', 0) %}{% set low = sev.get('Low', 0) %}
+  <div class="deck">
+    <section class="panel gauge-panel bracketed reveal" aria-label="Posture score">
+      <div class="gauge">
+        <svg viewBox="0 0 240 240" role="img" aria-label="Posture score {{ score if score is not none else 'not available' }} out of 100">
+          <circle class="gauge-outer" cx="120" cy="120" r="112"/>
+          <g transform="rotate(135 120 120)">
+            <circle class="gauge-track" cx="120" cy="120" r="100" stroke-dasharray="471.2 628.3"/>
+            <circle class="gauge-value {{ score_tone(score) }}" cx="120" cy="120" r="100" stroke-dasharray="{{ ((471.2 * (score or 0)) / 100)|round(1) }} 628.3"/>
+            <circle class="gauge-ticks" cx="120" cy="120" r="100" stroke-dasharray="2.2 6.3"/>
+          </g>
         </svg>
-        <span class="score-text">{{ scan.posture_score if scan.posture_score is not none else 'N/A' }}</span>
+        <div class="gauge-center">
+          <div class="gauge-score {{ score_tone(score) }}">{{ score if score is not none else '--' }}</div>
+          <div class="gauge-of">OUT OF 100</div>
+          <div class="gauge-grade {{ score_tone(score) }}">{{ score_grade(score) }}</div>
+        </div>
       </div>
-      <div>
-        <div class="card-label">Posture Score</div>
-        <div class="card-subtext">Baseline 100 &bull; NIST SP 800-30</div>
+      <p class="gauge-caption">100 minus penalties: Critical 15, High 8, Medium 3, Low 1.</p>
+    </section>
+
+    <div class="deck-side">
+      <div class="stat-row">
+        <div class="stat stat-fail reveal"><div class="stat-label">Failed checks</div><div class="stat-value {% if summary.failed_findings %}has-items{% endif %}">{{ summary.failed_findings }}</div><div class="stat-sub">Need remediation</div></div>
+        <div class="stat stat-alert reveal"><div class="stat-label">Active alerts</div><div class="stat-value {% if summary.active_alerts %}has-items{% endif %}">{{ summary.active_alerts }}</div><div class="stat-sub">From Security log</div></div>
+        <div class="stat stat-sw reveal"><div class="stat-label">Vulnerable apps</div><div class="stat-value {% if summary.vulnerable_software %}has-items{% endif %}">{{ summary.vulnerable_software }}</div><div class="stat-sub">Of {{ summary.software_total }} inventoried</div></div>
       </div>
-    </div>
 
-    <!-- Card 2: Total Failed Findings -->
-    <div class="card">
-      <div class="card-label">Failed Findings</div>
-      <div class="card-value">{{ summary.failed_findings }}</div>
-      <div class="card-subtext">Actionable security deficiencies</div>
-    </div>
-
-    <!-- Card 3: Active Incident Alerts -->
-    <div class="card">
-      <div class="card-label">Active Alerts</div>
-      <div class="card-value {% if summary.active_alerts > 0 %}text-accent{% endif %}">
-        {{ summary.active_alerts }}
-      </div>
-      <div class="card-subtext">Correlated event log detections</div>
-    </div>
-
-    <!-- Card 4: Vulnerable Software -->
-    <div class="card">
-      <div class="card-label">Vulnerable Software</div>
-      <div class="card-value">{{ summary.vulnerable_software }}</div>
-      <div class="card-subtext">Out of {{ summary.software_total }} inventoried apps</div>
+      <section class="panel heat reveal" aria-label="Failed findings by severity">
+        <div class="panel-title"><span>Risk distribution</span><span class="hint">Failed findings by severity</span></div>
+        {% if crit + high + med + low == 0 %}
+          <div class="heat-empty">{{ icon('shield-check') }} No failed findings in this scan.</div>
+        {% else %}
+          <div class="heat-bar" role="img" aria-label="Critical {{ crit }}, High {{ high }}, Medium {{ med }}, Low {{ low }}">
+            {% for name, n in [('critical', crit), ('high', high), ('medium', med), ('low', low)] if n %}
+              <span class="heat-seg bg-{{ name }}" data-weight="{{ n }}"></span>
+            {% endfor %}
+          </div>
+        {% endif %}
+        <ul class="heat-legend">
+          <li><span class="dot bg-critical"></span>Critical <strong>{{ crit }}</strong></li>
+          <li><span class="dot bg-high"></span>High <strong>{{ high }}</strong></li>
+          <li><span class="dot bg-medium"></span>Medium <strong>{{ med }}</strong></li>
+          <li><span class="dot bg-low"></span>Low <strong>{{ low }}</strong></li>
+          <li><span class="dot bg-error"></span>Errors <strong>{{ sev.get('Error', 0) }}</strong></li>
+        </ul>
+      </section>
     </div>
   </div>
 
-  <!-- Charts Grid (Loaded asynchronously via app.js) -->
   <div class="charts-grid">
-    <!-- Chart A: Findings by Severity -->
-    <div class="chart-panel">
-      <div class="panel-title">Findings by Severity</div>
-      <div class="chart-container">
-        <canvas id="severityChart"></canvas>
-      </div>
-    </div>
-
-    <!-- Chart B: Findings by Module -->
-    <div class="chart-panel">
-      <div class="panel-title">Failed Checks by Module</div>
-      <div class="chart-container">
-        <canvas id="moduleChart"></canvas>
-      </div>
-    </div>
-
-    <!-- Chart C: Failed Logons Timeline -->
-    <div class="chart-panel">
-      <div class="panel-title">Failed Logons (Event 4625)</div>
-      <div class="chart-container">
-        <canvas id="logonChart"></canvas>
-      </div>
-    </div>
+    <section class="panel chart-panel"><div class="panel-title">Findings by severity</div><div class="chart-container"><canvas id="severityChart" aria-label="Doughnut chart of findings by severity" role="img"></canvas></div></section>
+    <section class="panel chart-panel"><div class="panel-title">Failed checks by module</div><div class="chart-container"><canvas id="moduleChart" aria-label="Bar chart of failed checks by module" role="img"></canvas></div></section>
+    <section class="panel chart-panel"><div class="panel-title">Failed logons / day <span class="hint">Event 4625</span></div><div class="chart-container"><canvas id="logonChart" aria-label="Line chart of failed logons per day" role="img"></canvas></div></section>
   </div>
 
-  <!-- Top 5 Risks Panel -->
-  <div class="panel">
-    <div class="panel-title">
-      <span>Top Security Risks</span>
-      <a href="{{ url_for('views.findings') }}" class="btn btn-secondary btn-sm">View all findings</a>
-    </div>
-
+  <section class="panel panel-flush">
+    <div class="panel-title"><span>Top risks to fix first</span><a href="{{ url_for('views.findings', scan_id=scan.id, status='fail') }}" class="btn btn-secondary btn-sm">All failed findings</a></div>
     {% if not top_risks %}
-      <div class="empty-state">
-        <p>No failed findings identified in this audit.</p>
-      </div>
+      <div class="empty-state"><p>No failed findings were identified in this audit.</p></div>
     {% else %}
       <div class="table-responsive">
         <table class="table">
-          <thead>
-            <tr>
-              <th>Severity</th>
-              <th>Finding Title</th>
-              <th>Module</th>
-              <th>Risk Score</th>
-              <th>Remediation Summary</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Severity</th><th>Finding</th><th>Module</th><th>Risk (L &times; I)</th><th>Recommended action</th></tr></thead>
           <tbody>
             {% for f in top_risks %}
               <tr>
-                <td>
-                  <span class="badge badge-{{ f.severity.lower() }}">{{ f.severity }}</span>
-                </td>
-                <td><strong>{{ f.title }}</strong></td>
-                <td>{{ f.module.upper() }}</td>
-                <td><strong>{{ f.risk_score }}</strong> <span class="text-muted-sm">(L:{{ f.likelihood }} &times; I:{{ f.impact }})</span></td>
-                <td>{{ f.remediation[:80] }}...</td>
+                <td>{{ sev_badge(f.severity) }}</td>
+                <td class="fw-600">{{ f.title }}</td>
+                <td class="mono text-dim">{{ f.module|upper }}</td>
+                <td><span class="risk-calc"><b>{{ f.risk_score }}</b><span class="text-faint">{{ f.likelihood }}&times;{{ f.impact }}</span></span></td>
+                <td class="text-dim">{{ f.remediation|truncate(110) }}</td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     {% endif %}
-  </div>
+  </section>
 {% endif %}
 {% endblock %}

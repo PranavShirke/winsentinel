@@ -6,6 +6,7 @@ scans, findings, alerts, software inventory, CVE caching, and admin authenticati
 All SQL queries use strictly parameterized placeholders (?) to eliminate SQL injection risks.
 """
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
@@ -121,6 +122,17 @@ def init_db(db_path: Optional[str] = None) -> None:
             cvss_score REAL,
             description TEXT,
             fetched_at TEXT NOT NULL
+        );
+    """)
+
+    # 7. Scan metrics table (per-scan log statistics such as daily failed logons)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scan_metrics (
+            scan_id INTEGER NOT NULL,
+            metric TEXT NOT NULL,
+            value TEXT NOT NULL,
+            PRIMARY KEY (scan_id, metric),
+            FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE
         );
     """)
 
@@ -384,6 +396,94 @@ def get_latest_scan(db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def get_latest_completed_scan(db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Retrieve the most recent scan that finished successfully.
+
+    Dashboards use this so a scan that is still running (or failed) never shows as an empty report.
+
+    Args:
+        db_path: Optional path to the database file.
+
+    Returns:
+        Dict representing the scan or None if no completed scan exists.
+    """
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM scans WHERE status = 'completed' ORDER BY id DESC LIMIT 1;")
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def insert_scan_metrics(scan_id: int, metrics: Dict[str, Any], db_path: Optional[str] = None) -> None:
+    """
+    Persist JSON-serialisable scan metrics (e.g. daily failed logons) for a scan.
+
+    Args:
+        scan_id: ID of the scan.
+        metrics: Mapping of metric name to JSON-serialisable value.
+        db_path: Optional path to the database file.
+    """
+    if not metrics:
+        return
+    conn = get_db_connection(db_path)
+    conn.executemany(
+        "INSERT OR REPLACE INTO scan_metrics (scan_id, metric, value) VALUES (?, ?, ?);",
+        [(scan_id, name, json.dumps(value)) for name, value in metrics.items()],
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_scan_metrics(scan_id: int, db_path: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Load the metrics saved for a scan.
+
+    Args:
+        scan_id: ID of the scan.
+        db_path: Optional path to the database file.
+
+    Returns:
+        Dict mapping metric name to its decoded value (empty if none stored).
+    """
+    conn = get_db_connection(db_path)
+    rows = conn.execute("SELECT metric, value FROM scan_metrics WHERE scan_id = ?;", (scan_id,)).fetchall()
+    conn.close()
+    result: Dict[str, Any] = {}
+    for row in rows:
+        try:
+            result[row["metric"]] = json.loads(row["value"])
+        except ValueError:
+            continue
+    return result
+
+
+def compare_scans(old_scan_id: int, new_scan_id: int, db_path: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Compare the failed findings of two scans to show security drift.
+
+    Findings are matched on (module, title). Titles that embed a changing value
+    (such as a CVE id) will appear as one resolved plus one new entry, which is the
+    desired behaviour.
+
+    Args:
+        old_scan_id: Baseline scan.
+        new_scan_id: Scan to compare against the baseline.
+        db_path: Optional path to the database file.
+
+    Returns:
+        Dict with 'new' (appeared), 'resolved' (fixed) and 'persisting' finding lists.
+    """
+    old = {(f["module"], f["title"]): f for f in get_findings_by_scan_id(old_scan_id, status="fail", db_path=db_path)}
+    new = {(f["module"], f["title"]): f for f in get_findings_by_scan_id(new_scan_id, status="fail", db_path=db_path)}
+    return {
+        "new": [new[k] for k in new if k not in old],
+        "resolved": [old[k] for k in old if k not in new],
+        "persisting": [new[k] for k in new if k in old],
+    }
 
 
 def get_scan_by_id(scan_id: int, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:

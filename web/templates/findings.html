@@ -1,154 +1,119 @@
 {% extends "layout.html" %}
+{% from "_macros.html" import icon, sev_badge, status_badge %}
 
 {% block title %}Findings{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Audit Findings</h1>
-    <p class="page-subtitle">Security check evaluations across Configuration, Event Logs, and Software</p>
+    <div class="page-kicker">Audit results</div>
+    <h1 class="page-title">Findings</h1>
+    <p class="page-subtitle">Every control checked across configuration, Security event logs and installed software. Select a row for evidence and the fix.</p>
   </div>
   {% if scan %}
-    <div class="page-meta"><span class="live-dot"></span> Scan #{{ scan.id }} <span>•</span> {{ findings|length }} checks listed</div>
+    <div class="page-actions">
+      <span class="scan-chip">SCAN #{{ scan.id }}</span>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('views.export_findings_csv', scan_id=scan.id) }}">{{ icon('download', 'icon-sm') }} Export CSV</a>
+    </div>
   {% endif %}
 </div>
 
 {% if not scan %}
-  <div class="panel empty-state">
-    <h3>No Scan Selected</h3>
-    <p>Please execute a scan or select a previous scan from Scan History.</p>
+  <div class="panel empty-state bracketed">
+    {{ icon('findings', 'icon-lg') }}
+    <h3>No scan selected</h3>
+    <p>Run a scan or pick a previous one from Scan history.</p>
   </div>
 {% else %}
-  <div class="findings-overview">
-    <div class="overview-card overview-total"><span class="overview-icon">⌁</span><div><strong>{{ findings|length }}</strong><small>Total checks</small></div></div>
-    <div class="overview-card overview-critical"><span class="overview-icon">!</span><div><strong>{{ findings|selectattr('severity', 'equalto', 'Critical')|list|length }}</strong><small>Critical risk</small></div></div>
-    <div class="overview-card overview-failed"><span class="overview-icon">×</span><div><strong>{{ findings|selectattr('status', 'equalto', 'fail')|list|length }}</strong><small>Needs attention</small></div></div>
-    <div class="overview-card overview-passed"><span class="overview-icon">✓</span><div><strong>{{ findings|selectattr('status', 'equalto', 'pass')|list|length }}</strong><small>Passed checks</small></div></div>
+  <div class="summary-strip">
+    <div class="summary-cell"><strong>{{ findings|length }}</strong><span>Checks listed</span></div>
+    <div class="summary-cell"><strong>{{ findings|selectattr('severity', 'equalto', 'Critical')|list|length }}</strong><span>Critical</span></div>
+    <div class="summary-cell"><strong>{{ findings|selectattr('status', 'equalto', 'fail')|list|length }}</strong><span>Need attention</span></div>
+    <div class="summary-cell"><strong>{{ findings|selectattr('status', 'equalto', 'pass')|list|length }}</strong><span>Passed</span></div>
   </div>
-  <!-- Filter Bar -->
-  <form method="GET" action="{{ url_for('views.findings') }}" class="filter-bar">
+
+  <form method="GET" action="{{ url_for('views.findings') }}" class="filter-bar" role="search">
     {% if request.args.get('scan_id') %}
-      <input type="hidden" name="scan_id" value="{{ request.args.get('scan_id') }}">
+      <input type="hidden" name="scan_id" value="{{ scan.id }}">
     {% endif %}
 
     <div class="filter-group">
-      <label for="filter-severity">Severity:</label>
-      <div class="select-wrap"><select id="filter-severity" name="severity" class="input-control">
-        <option value="">All Severities</option>
+      <label for="filter-severity">Severity</label>
+      <select id="filter-severity" name="severity" class="input-control">
+        <option value="">All</option>
         {% for s in ['Critical', 'High', 'Medium', 'Low', 'Info', 'Error'] %}
           <option value="{{ s }}" {% if selected_severity == s %}selected{% endif %}>{{ s }}</option>
         {% endfor %}
-      </select></div>
+      </select>
     </div>
-
     <div class="filter-group">
-      <label for="filter-module">Module:</label>
-      <div class="select-wrap"><select id="filter-module" name="module" class="input-control">
-        <option value="">All Modules</option>
+      <label for="filter-module">Module</label>
+      <select id="filter-module" name="module" class="input-control">
+        <option value="">All</option>
         <option value="config" {% if selected_module == 'config' %}selected{% endif %}>Configuration</option>
-        <option value="logs" {% if selected_module == 'logs' %}selected{% endif %}>Event Logs</option>
+        <option value="logs" {% if selected_module == 'logs' %}selected{% endif %}>Event logs</option>
         <option value="software" {% if selected_module == 'software' %}selected{% endif %}>Software CVEs</option>
-      </select></div>
+      </select>
     </div>
-
     <div class="filter-group">
-      <label for="filter-status">Status:</label>
-      <div class="select-wrap"><select id="filter-status" name="status" class="input-control">
-        <option value="">All Statuses</option>
+      <label for="filter-status">Status</label>
+      <select id="filter-status" name="status" class="input-control">
+        <option value="">All</option>
         <option value="fail" {% if selected_status == 'fail' %}selected{% endif %}>Fail</option>
         <option value="pass" {% if selected_status == 'pass' %}selected{% endif %}>Pass</option>
         <option value="error" {% if selected_status == 'error' %}selected{% endif %}>Error</option>
-      </select></div>
+      </select>
     </div>
-
-    <div class="filter-group">
-      <label for="filter-search">Search:</label>
-      <input
-        type="text"
-        id="filter-search"
-        name="search"
-        class="input-control"
-        placeholder="Filter by title or evidence..."
-        value="{{ selected_search or '' }}"
-      >
+    <div class="filter-group grow">
+      <label for="filter-search">Search</label>
+      <input type="search" id="filter-search" name="search" class="input-control" maxlength="100" placeholder="Title or evidence" value="{{ selected_search or '' }}">
     </div>
-
-    <button type="submit" class="btn btn-primary btn-sm">Apply filters</button>
+    <button type="submit" class="btn btn-primary btn-sm">Apply</button>
     <a href="{{ url_for('views.findings', scan_id=scan.id) }}" class="btn btn-secondary btn-sm">Reset</a>
   </form>
 
-  <!-- Findings Table -->
-  <div class="panel">
-    <div class="table-toolbar">
-      <div><strong>Security control results</strong><span>Click a row to inspect evidence and remediation</span></div>
-      <div class="status-legend"><span class="status-pill status-fail">FAIL = risk found</span><span class="status-pill status-pass">PASS = control healthy</span></div>
-    </div>
+  <section class="panel panel-flush">
     {% if not findings %}
-      <div class="empty-state">
-        <p>No findings matched the selected filter criteria.</p>
-      </div>
+      <div class="empty-state"><p>No findings match these filters.</p></div>
     {% else %}
       <div class="table-responsive">
         <table class="table">
           <thead>
-            <tr>
-              <th>Severity</th>
-              <th>Finding Title</th>
-              <th>Module</th>
-              <th>Risk Score</th>
-              <th>Status</th>
-              <th>Details</th>
-            </tr>
+            <tr><th>Severity</th><th>Check</th><th>Module</th><th>Risk (L &times; I)</th><th>Status</th><th><span class="sr-only">Details</span></th></tr>
           </thead>
           <tbody>
             {% for f in findings %}
-              <tr
-                class="table-row-clickable"
-                tabindex="0"
-                data-target="detail-row-{{ f.id }}"
-                title="Click to view evidence and remediation"
-              >
+              <tr class="table-row-clickable" tabindex="0" role="button" aria-expanded="false" aria-controls="detail-row-{{ f.id }}" data-target="detail-row-{{ f.id }}">
+                <td>{{ sev_badge(f.severity) }}</td>
+                <td class="fw-600">{{ f.title }}</td>
+                <td class="mono text-dim">{{ f.module|upper }}</td>
                 <td>
-                  <span class="badge badge-{{ f.severity.lower() }}">{{ f.severity }}</span>
-                </td>
-                <td><strong>{{ f.title }}</strong></td>
-                <td>{{ f.module.upper() }}</td>
-                <td>
-                  {% if f.status == 'pass' %}
-                    <span class="text-muted-sm">Pass (0)</span>
-                  {% elif f.status == 'error' %}
-                    <span class="text-muted-sm">Error</span>
+                  {% if f.status == 'fail' %}
+                    <span class="risk-calc"><b>{{ f.risk_score }}</b><span class="text-faint">{{ f.likelihood }}&times;{{ f.impact }}</span></span>
                   {% else %}
-                    <strong>{{ f.risk_score }}</strong> <span class="text-muted-sm">(L:{{ f.likelihood }} &times; I:{{ f.impact }})</span>
+                    <span class="text-faint">&mdash;</span>
                   {% endif %}
                 </td>
-                <td>
-                  {% if f.status == 'pass' %}
-                    <span class="badge badge-low">PASS</span>
-                  {% elif f.status == 'fail' %}
-                    <span class="badge badge-critical">FAIL</span>
-                  {% else %}
-                    <span class="badge badge-error">ERROR</span>
-                  {% endif %}
-                </td>
-                <td>
-                  <span class="text-accent text-muted-sm">&blacktriangledown; Expand</span>
-                </td>
+                <td>{{ status_badge(f.status) }}</td>
+                <td><span class="expand-cue">Details {{ icon('chevron', 'icon-sm') }}</span></td>
               </tr>
-
-              <!-- Expandable Evidence & Remediation Drawer -->
               <tr id="detail-row-{{ f.id }}" class="detail-row">
                 <td colspan="6">
-                  <div>
-                    <div class="text-muted-sm text-bold">TECHNICAL EVIDENCE & COMMAND OUTPUT:</div>
-                    <div class="evidence-box">{{ f.evidence }}</div>
-                  </div>
-                  {% if f.remediation and f.status != 'pass' %}
-                    <div class="remediation-box">
-                      <strong>Recommended Remediation:</strong>
-                      <p>{{ f.remediation }}</p>
+                  <div class="detail-inner">
+                    <div>
+                      <div class="detail-label">Evidence</div>
+                      <div class="evidence-box">{{ f.evidence }}</div>
                     </div>
-                  {% endif %}
+                    <div>
+                      {% if f.remediation and f.status != 'pass' %}
+                        <div class="detail-label">Recommended remediation</div>
+                        <div class="remediation-box"><p>{{ f.remediation }}</p></div>
+                      {% else %}
+                        <div class="detail-label">Result</div>
+                        <p class="text-dim">Control is compliant. No action required.</p>
+                      {% endif %}
+                    </div>
+                  </div>
                 </td>
               </tr>
             {% endfor %}
@@ -156,6 +121,6 @@
         </table>
       </div>
     {% endif %}
-  </div>
+  </section>
 {% endif %}
 {% endblock %}

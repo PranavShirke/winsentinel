@@ -1,58 +1,45 @@
 {% extends "layout.html" %}
+{% from "_macros.html" import icon, sev_badge %}
 
-{% block title %}Software & CVEs{% endblock %}
+{% block title %}Software &amp; CVEs{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1 class="page-title">Installed Software & Vulnerability Inventory</h1>
-    <p class="page-subtitle">Windows Registry package inventory cross-referenced with National Vulnerability Database (NVD)</p>
+    <div class="page-kicker">Vulnerability exposure</div>
+    <h1 class="page-title">Software &amp; CVEs</h1>
+    <p class="page-subtitle">Installed applications from the Windows registry. Allow-listed products are checked against the NVD and kept only when the installed version is inside the CVE's affected range.</p>
   </div>
   {% if scan %}
-    <span class="badge badge-info">Scan #{{ scan.id }} &bull; {{ software_list|length }} Packages &bull; {{ cve_findings|length }} Flagged</span>
+    <div class="page-actions"><span class="scan-chip">{{ software_list|length }} packages &middot; {{ cve_findings|length }} flagged</span></div>
   {% endif %}
 </div>
 
 {% if not scan %}
-  <div class="panel empty-state">
-    <h3>No Scan Selected</h3>
-    <p>Please execute a scan or select a previous scan from Scan History.</p>
+  <div class="panel empty-state bracketed">
+    {{ icon('software', 'icon-lg') }}
+    <h3>No scan selected</h3>
+    <p>Run a scan or pick a previous one from Scan history.</p>
   </div>
 {% else %}
-  <!-- Allowlisted Software Vulnerabilities (CVE Matches) -->
-  <div class="panel">
-    <div class="panel-title">
-      <span>Allowlisted Applications & Known CVEs</span>
-      <span class="text-muted-sm">Audited against NVD API v2</span>
-    </div>
-
+  <section class="panel panel-flush">
+    <div class="panel-title"><span>Known vulnerabilities</span><span class="hint">Source: NVD API v2 &middot; keyword + CPE version range</span></div>
     {% if not cve_findings %}
       <div class="empty-state">
-        <p>No critical vulnerabilities were flagged for allowlisted software in this scan.</p>
+        {{ icon('shield-check', 'icon-lg') }}
+        <p>No allow-listed application has a known CVE affecting its installed version.</p>
       </div>
     {% else %}
       <div class="table-responsive">
         <table class="table">
-          <thead>
-            <tr>
-              <th>Severity</th>
-              <th>Vulnerability Title</th>
-              <th>Risk Score</th>
-              <th>Technical Details & NVD Reference</th>
-              <th>Recommended Action</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Severity</th><th>Vulnerability</th><th>Risk (L &times; I)</th><th>Detail</th><th>Action</th></tr></thead>
           <tbody>
             {% for f in cve_findings %}
               <tr>
-                <td>
-                  <span class="badge badge-{{ f.severity.lower() }}">{{ f.severity }}</span>
-                </td>
-                <td><strong>{{ f.title }}</strong></td>
-                <td>
-                  <strong>{{ f.risk_score }}</strong> <span class="text-muted-sm">(L:{{ f.likelihood }} &times; I:{{ f.impact }})</span>
-                </td>
-                <td class="text-muted-sm">{{ f.evidence }}</td>
+                <td>{{ sev_badge(f.severity) }}</td>
+                <td class="fw-600">{{ f.title }}</td>
+                <td><span class="risk-calc"><b>{{ f.risk_score }}</b><span class="text-faint">{{ f.likelihood }}&times;{{ f.impact }}</span></span></td>
+                <td class="text-dim">{{ f.evidence }}</td>
                 <td>{{ f.remediation }}</td>
               </tr>
             {% endfor %}
@@ -60,41 +47,28 @@
         </table>
       </div>
     {% endif %}
-  </div>
+  </section>
 
-  <!-- Full Software Inventory Table -->
-  <div class="panel">
-    <div class="panel-title">
-      <span>Complete Windows Registry Software Inventory</span>
-      <span class="text-muted-sm">{{ software_list|length }} Total Applications</span>
-    </div>
-
+  <section class="panel panel-flush">
+    <div class="panel-title"><span>Installed software inventory</span><span class="hint">{{ software_list|length }} applications</span></div>
     {% if not software_list %}
-      <div class="empty-state">
-        <p>No installed software entries discovered in registry.</p>
-      </div>
+      <div class="empty-state"><p>No installed software entries were found in the registry.</p></div>
     {% else %}
       <div class="table-responsive">
         <table class="table">
-          <thead>
-            <tr>
-              <th>Application Name</th>
-              <th>Version</th>
-              <th>Publisher</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Application</th><th>Version</th><th>Publisher</th></tr></thead>
           <tbody>
             {% for s in software_list %}
               <tr>
-                <td><strong>{{ s.name }}</strong></td>
+                <td class="fw-600">{{ s.name }}</td>
                 <td><code>{{ s.version }}</code></td>
-                <td class="text-muted-sm">{{ s.publisher }}</td>
+                <td class="text-dim">{{ s.publisher }}</td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     {% endif %}
-  </div>
+  </section>
 {% endif %}
 {% endblock %}
